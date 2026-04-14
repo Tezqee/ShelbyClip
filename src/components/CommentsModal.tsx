@@ -18,12 +18,17 @@ export default function CommentsModal({ videoId, onClose }: Props) {
   const queryClient = useQueryClient();
   const videoHash = useMemo(() => getVideoHash(videoId), [videoId]);
   
-  const { data: remoteComments = [], isLoading: loading } = useQuery({
+  const { data: remoteComments = [], isLoading: loading, refetch } = useQuery({
     queryKey: ['comments', videoHash],
     queryFn: () => fetchComments(shelbyClient, videoHash),
-    staleTime: 5000,
-    refetchInterval: 15000,
+    staleTime: 2000, 
+    refetchInterval: 5000, // Faster polling while modal is open to catch propagation
   });
+
+  // Force a fresh fetch when the modal is opened
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['comments', videoHash] });
+  }, [videoHash]);
 
   const [text, setText] = useState('');
   const [posting, setPosting] = useState(false);

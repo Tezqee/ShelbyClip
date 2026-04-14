@@ -186,15 +186,22 @@ export async function fetchComments(shelbyClient: any, videoHash: string): Promi
         .map(seg => encodeURIComponent(seg).replace(/\(/g, '%28').replace(/\)/g, '%29'))
         .join('/');
 
+      // BRUTE-FORCE STRATEGY: Try every possible combination of gateway, address variant, and path encoding
       outer: for (const base of GATEWAYS) {
         for (const variant of variants) {
-          // Try encoded first (standard), then raw (legacy fallback)
-          const attemptPaths = [encodedPath, blobNamePath];
-          for (const path of attemptPaths) {
+          // 1. Try formatted path (Standard)
+          // 2. Try raw path (Legacy/Compatibility)
+          // 3. Try FULL coordination string (Super-fallback)
+          const pathsToTry = [encodedPath, blobNamePath, fullBlobName];
+          
+          for (const path of pathsToTry) {
             try {
               const res = await fetch(`${base}/v1/blobs/${variant}/${path}`);
               if (res.ok) {
                 const raw = await res.text();
+                // Skip markers (likes/reposts) if they accidentally matched the indexer pattern
+                if (raw.length < 2 && (blobNamePath.includes('like') || blobNamePath.includes('repost'))) continue;
+                
                 const text = decodeComment(raw);
                 const lastDash = blobNamePath.lastIndexOf('-');
                 const ts = lastDash >= 0 ? parseInt(blobNamePath.substring(lastDash + 1)) || 0 : 0;
