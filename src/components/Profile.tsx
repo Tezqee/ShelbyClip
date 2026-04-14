@@ -649,7 +649,7 @@ export default function Profile() {
     const NON_VIDEO_PATTERNS = [
       'profile.json',
       'profile-avatar',
-      'shelby-clip/profile-',
+      'shelby-clip/profile.',
       'shelby-clip/avatar-',
       'social/',
       'guest',
@@ -678,9 +678,9 @@ export default function Profile() {
         // Final gate: Must have our app prefix and the metadata separator
         if (!hasAppPattern) return null;
 
-        // Profile-save blobs are named {timestamp}p_{id}.mp4 — reject them from the video feed
-        const blobSegment = fullBlobName.split(':::')[0]; // e.g. shelby-clip/1776149866p_abc123.mp4
-        if (/shelby-clip\/\d+p_/.test(blobSegment)) return null;
+        // Profile-save blobs are named shelby-clip/{timestamp}p_{id}.mp4 or shelby-clip/profile.mp4 — reject from grid
+        const blobSegment = fullBlobName.split(':::')[0];
+        if (/shelby-clip\/\d+p_/.test(blobSegment) || blobSegment.includes('shelby-clip/profile.')) return null;
 
 
         // Ensure owner is a string and remove any @ prefix
