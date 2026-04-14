@@ -715,6 +715,10 @@ export default function Profile() {
         // Final gate: Must have our app prefix and the metadata separator
         if (!hasAppPattern) return null;
 
+        // Profile-save blobs are named {timestamp}p_{id}.mp4 — reject them from the video feed
+        const blobSegment = fullBlobName.split(':::')[0]; // e.g. shelby-clip/1776149866p_abc123.mp4
+        if (/shelby-clip\/\d+p_/.test(blobSegment)) return null;
+
 
         // Ensure owner is a string and remove any @ prefix
         owner = owner.toString().replace(/^@/, '');
@@ -770,7 +774,14 @@ export default function Profile() {
           if (rawDesc.startsWith('b64:')) {
             try {
               // Decode only if it starts with the b64: prefix
-              finalDescription = Buffer.from(rawDesc.substring(4), 'base64').toString('utf-8');
+              const decoded = Buffer.from(rawDesc.substring(4), 'base64').toString('utf-8');
+              // If decoded is profile-format JSON ({d, t}), it is NOT a caption — blank it
+              try {
+                const parsed = JSON.parse(decoded);
+                finalDescription = (parsed && typeof parsed === 'object' && 'd' in parsed) ? '' : decoded;
+              } catch {
+                finalDescription = decoded;
+              }
             } catch (e) {
               finalDescription = rawDesc;
             }
