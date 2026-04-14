@@ -7,7 +7,7 @@ import { Order_By, ShelbyBlobClient } from '@shelby-protocol/sdk/browser';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Heart, Share2, Trash2, Volume2, VolumeX, Play, Pause, UserPlus, UserCheck, Loader2, Edit3, X, Check, Camera, Maximize } from 'lucide-react';
-import { checkBlobExists, getFollowBlobName, toggleFollow as socialToggleFollow, getFollowerCount, fetchProfile, normalizeAddr, GATEWAYS } from '../services/social';
+import { checkBlobExists, getFollowBlobName, toggleFollow as socialToggleFollow, getFollowerCount, fetchProfile, normalizeAddr } from '../services/social';
 
 // Compress avatar images down to ~15KB to bypass strict WAF chunking limits
 function compressAvatar(file: File): Promise<Uint8Array> {
@@ -543,7 +543,7 @@ export default function Profile() {
           finalBlobData = new Uint8Array(Buffer.from(jsonPayload));
           
           // SPOOF AS MP4 to 100% bypass all Gateway WAF size validations!
-          finalBlobName = `shelby-clip/${timestamp}p_${randomId}.mp4:::b64:${encodedDesc}`;
+          finalBlobName = `shelby-clip/${timestamp}p_${Math.random().toString(36).substring(2, 8)}.mp4:::b64:${encodedDesc}`;
         } catch (err: any) {
           alert('Gambar gagal diproses. Gunakan gambar lain.');
           setIsSavingProfile(false);
@@ -559,7 +559,7 @@ export default function Profile() {
         finalBlobData = new Uint8Array(Buffer.from(jsonPayload));
         
         // SPOOF AS MP4 to guarantee 100% delivery via Gateway WAF
-        finalBlobName = `shelby-clip/${timestamp}p_${randomId}.mp4:::b64:${encodedDesc}`;
+        finalBlobName = `shelby-clip/${timestamp}p_${Math.random().toString(36).substring(2, 8)}.mp4:::b64:${encodedDesc}`;
       }
 
       await new Promise<void>((resolve, reject) => {
