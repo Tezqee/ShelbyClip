@@ -251,7 +251,7 @@ function VideoItem({
     setTimeout(() => setShowFeedback(null), 800);
   };
 
-  // TikTok Logic: Auto-play/pause based on parent's activeIndex
+  // Feed Logic: Auto-play/pause based on parent's activeIndex
   useEffect(() => {
     if (!videoRef.current) return;
     const v = videoRef.current;
@@ -375,7 +375,7 @@ function VideoItem({
         </div>
       )}
 
-      {/* TikTok Style: Persistent play icon appears when paused (even if buffering) so user can tap to resume */}
+      {/* Persistent play icon appears when paused (even if buffering) so user can tap to resume */}
       {(!isPlaying && isNear && !showFeedback) && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 transition-opacity duration-300">
           <div className="w-[72px] h-[72px] bg-black/40 rounded-full flex items-center justify-center backdrop-blur-md border border-white/10">
@@ -408,7 +408,7 @@ function VideoItem({
         src={videoSrc}
       />
 
-      {/* TikTok Style: Bottom Progress Bar */}
+      {/* Global Style: Bottom Progress Bar */}
       <div className="video-progress-container">
         <div 
           className="video-progress-bar" 

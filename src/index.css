@@ -269,7 +269,7 @@ html, body {
   height: 100dvh;
   width: 100%;
   scroll-snap-align: center;
-  scroll-snap-stop: always; /* Ensure one flick per video like TikTok */
+  scroll-snap-stop: always; /* Ensure one flick per video */
   position: relative;
   background-color: #000;
   display: flex;
@@ -1208,7 +1208,7 @@ main {
   margin-top: 0.35rem;
 }
 
-/* TikTok Style Progress Bar */
+/* Global Style Progress Bar */
 .video-progress-container {
   position: absolute;
   bottom: 0;
