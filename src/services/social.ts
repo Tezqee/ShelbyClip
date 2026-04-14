@@ -318,6 +318,7 @@ export async function fetchProfile(shelbyClient: any, addr: string): Promise<Use
           if (suffixTs > 0) {
             gatewayTimestamp = suffixTs;
             // Now fetch the actual JSON body content
+            const normAddr = variants[0];
             const blobRes = await fetch(`${GATEWAYS[0]}/v1/blobs/${normAddr}/${bName}?t=${suffixTs}`, { cache: 'no-store' });
             if (blobRes.ok) {
               const parsed = JSON.parse(await blobRes.text());
