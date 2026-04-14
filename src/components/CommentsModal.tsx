@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useShelbyClient } from '@shelby-protocol/react';
 import { useUploadBlobs } from '@shelby-protocol/react';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
 import { X, Send, Loader2 } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchComments, getCommentBlobName, encodeComment, getVideoHash, fetchProfile, type Comment } from '../services/social';
 
 interface Props {
@@ -14,35 +15,66 @@ export default function CommentsModal({ videoId, onClose }: Props) {
   const shelbyClient = useShelbyClient();
   const uploadBlobs = useUploadBlobs({});
   const { account, signAndSubmitTransaction, connected } = useWallet();
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const videoHash = useMemo(() => getVideoHash(videoId), [videoId]);
+  
+  const { data: remoteComments = [], isLoading: loading } = useQuery({
+    queryKey: ['comments', videoHash],
+    queryFn: () => fetchComments(shelbyClient, videoHash),
+    staleTime: 5000,
+    refetchInterval: 15000,
+  });
+
   const [text, setText] = useState('');
   const [posting, setPosting] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  const videoHash = getVideoHash(videoId);
 
+  // LocalStorage Fallback for "My Pending Comments"
+  const pendingKey = `pending_comments_${videoHash}`;
+  const [pendingComments, setPendingComments] = useState<Comment[]>(() => {
+    try {
+      const saved = localStorage.getItem(pendingKey);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  // Sync pending comments to storage
   useEffect(() => {
-    setLoading(true);
+    localStorage.setItem(pendingKey, JSON.stringify(pendingComments));
+  }, [pendingComments, pendingKey]);
 
-    fetchComments(shelbyClient, videoHash).then(c => {
-
-      setComments(c);
-      setLoading(false);
+  // Merge remote and pending, filtering out duplicates if remote already has them
+  const comments = useMemo(() => {
+    const combined = [...remoteComments];
+    pendingComments.forEach(p => {
+      // If remote doesn't have it by text/timestamp approx, keep it pending
+      if (!remoteComments.some(r => r.text === p.text && Math.abs(r.timestamp - p.timestamp) < 5000)) {
+        combined.push(p);
+      }
     });
-  }, [videoId]);
+    return combined.sort((a, b) => a.timestamp - b.timestamp);
+  }, [remoteComments, pendingComments]);
 
   useEffect(() => {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }, [comments]);
+  }, [comments.length]);
 
   const handlePost = async () => {
     if (!text.trim() || !account || !signAndSubmitTransaction) return;
     setPosting(true);
+    const ts = Date.now();
+    const blobName = getCommentBlobName(videoHash, ts);
+    const myAddr = account.address.toString();
+    const newComment: Comment = { text: text.trim(), author: myAddr, timestamp: ts, id: blobName };
+
     try {
-      const ts = Date.now();
-      const blobName = getCommentBlobName(videoHash, ts);
+      // 1. Optimistic Update (UI + Pending Storage)
+      setPendingComments(prev => [...prev, newComment]);
+      setText('');
+
+      // 2. Real Upload
       const encoded = encodeComment(text.trim());
       const blobData = new TextEncoder().encode(encoded);
       await new Promise<void>((resolve, reject) => {
@@ -55,11 +87,13 @@ export default function CommentsModal({ videoId, onClose }: Props) {
           { onSuccess: () => resolve(), onError: (e: any) => reject(e) }
         );
       });
-      const myAddr = account.address.toString();
-      setComments(c => [...c, { text: text.trim(), author: myAddr, timestamp: ts, id: blobName }]);
-      setText('');
+
+      // 3. Refresh Query Cache
+      queryClient.invalidateQueries({ queryKey: ['comments', videoHash] });
     } catch (e: any) {
       alert('Failed to post: ' + (e.message || e));
+      // Remove failed comment from pending
+      setPendingComments(prev => prev.filter(p => p.id !== blobName));
     } finally {
       setPosting(false);
     }
@@ -126,10 +160,8 @@ export default function CommentsModal({ videoId, onClose }: Props) {
   );
 }
 
-import { useQuery as useTanstackQuery } from '@tanstack/react-query';
-
 function CommentItem({ comment, shelbyClient }: { comment: Comment, shelbyClient: any }) {
-  const { data: profile } = useTanstackQuery({
+  const { data: profile } = useQuery({
     queryKey: ['profile', comment.author],
     queryFn: () => fetchProfile(shelbyClient, comment.author),
     staleTime: 30000,
