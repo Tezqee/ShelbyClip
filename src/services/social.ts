@@ -214,10 +214,31 @@ export async function getLikeCount(shelbyClient: any, videoHash: string): Promis
       where: { blob_name: { _ilike: `%shelby-clip/social/like-${videoHash}%` } },
       pagination: { limit: 1000 },
     });
-    // Handle multiple response shapes
-    const list: any[] = Array.isArray(result)
-      ? result
-      : (result as any)?.blobs ?? (result as any)?.data?.blobs ?? [];
+    const list: any[] = Array.isArray(result) ? result : (result as any)?.blobs ?? [];
+    return list.length;
+  } catch { return 0; }
+}
+
+// ---- Count comments for a video ----
+export async function getCommentCount(shelbyClient: any, videoHash: string): Promise<number> {
+  try {
+    const result = await shelbyClient.coordination.getBlobs({
+      where: { blob_name: { _ilike: `%shelby-clip/social/comment-${videoHash}%` } },
+      pagination: { limit: 1000 },
+    });
+    const list: any[] = Array.isArray(result) ? result : (result as any)?.blobs ?? [];
+    return list.length;
+  } catch { return 0; }
+}
+
+// ---- Count reposts for a video ----
+export async function getRepostCount(shelbyClient: any, videoHash: string): Promise<number> {
+  try {
+    const result = await shelbyClient.coordination.getBlobs({
+      where: { blob_name: { _ilike: `%shelby-clip/social/repost-${videoHash}%` } },
+      pagination: { limit: 1000 },
+    });
+    const list: any[] = Array.isArray(result) ? result : (result as any)?.blobs ?? [];
     return list.length;
   } catch { return 0; }
 }

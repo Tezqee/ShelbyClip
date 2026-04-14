@@ -13,6 +13,8 @@ import {
   toggleLike as socialToggleLike,
   repost as socialRepost,
   getLikeCount,
+  getCommentCount,
+  getRepostCount,
   fetchProfile,
   normalizeAddr,
 } from '../services/social';
@@ -72,6 +74,8 @@ function VideoItem({
   const [progress, setProgress] = useState(0);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
+  const [commentCount, setCommentCount] = useState(0);
+  const [repostCount, setRepostCount] = useState(0);
   const [likeLoading, setLikeLoading] = useState(false);
   const [urlIndex, setUrlIndex] = useState(0);
 
@@ -165,6 +169,8 @@ function VideoItem({
   useEffect(() => {
     if (!video.id) return;
     getLikeCount(shelbyClient, videoHash).then(setLikeCount);
+    getCommentCount(shelbyClient, videoHash).then(setCommentCount);
+    getRepostCount(shelbyClient, videoHash).then(setRepostCount);
     if (connected && account) {
       checkBlobExists(myAddr, getLikeBlobName(videoHash)).then(setLiked);
     }
@@ -456,7 +462,7 @@ function VideoItem({
             <div className="action-icon-bg">
               <MessageCircle size={34} color="white" fill="none" />
             </div>
-            <span className="action-count">Comments</span>
+            <span className="action-count">{commentCount >= 1000 ? `${(commentCount / 1000).toFixed(1)}K` : commentCount}</span>
           </div>
 
           <div className="action-item" onClick={handleRepost}>
@@ -467,7 +473,7 @@ function VideoItem({
               }
             </div>
             <span className="action-count" style={{ color: reposted ? 'var(--secondary)' : 'inherit' }}>
-              {reposted ? 'Reposted' : 'Repost'}
+              {reposted ? (repostCount + (reposted ? 0 : 0)) : (repostCount >= 1000 ? `${(repostCount / 1000).toFixed(1)}K` : repostCount)}
             </span>
           </div>
 
