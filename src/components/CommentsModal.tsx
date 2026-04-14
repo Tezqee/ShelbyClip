@@ -3,7 +3,7 @@ import { useShelbyClient } from '@shelby-protocol/react';
 import { useUploadBlobs } from '@shelby-protocol/react';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
 import { X, Send, Loader2 } from 'lucide-react';
-import { fetchComments, getCommentBlobName, encodeComment, getVideoHash, type Comment } from '../services/social';
+import { fetchComments, getCommentBlobName, encodeComment, getVideoHash, fetchProfile, type Comment } from '../services/social';
 
 interface Props {
   videoId: string;
@@ -90,17 +90,7 @@ export default function CommentsModal({ videoId, onClose }: Props) {
             </div>
           ) : (
             comments.map(c => (
-              <div key={c.id} className="comment-item">
-                <div className="comment-avatar">
-                  {c.author.substring(2, 4).toUpperCase()}
-                </div>
-                <div className="comment-body">
-                  <span className="comment-author">
-                    @{c.author.substring(0, 6)}...{c.author.substring(c.author.length - 4)}
-                  </span>
-                  <p className="comment-text">{c.text}</p>
-                </div>
-              </div>
+              <CommentItem key={c.id} comment={c} shelbyClient={shelbyClient} />
             ))
           )}
         </div>
@@ -131,6 +121,36 @@ export default function CommentsModal({ videoId, onClose }: Props) {
             </p>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+import { useQuery as useTanstackQuery } from '@tanstack/react-query';
+
+function CommentItem({ comment, shelbyClient }: { comment: Comment, shelbyClient: any }) {
+  const { data: profile } = useTanstackQuery({
+    queryKey: ['profile', comment.author],
+    queryFn: () => fetchProfile(shelbyClient, comment.author),
+    staleTime: 30000,
+  });
+
+  const displayName = profile?.displayName || `@${comment.author.substring(2, 6)}...${comment.author.substring(comment.author.length - 4)}`;
+  const avatarUrl = profile?.avatarUrl;
+  const initials = displayName.startsWith('@') 
+    ? comment.author.substring(2, 4).toUpperCase()
+    : displayName[0].toUpperCase();
+
+  return (
+    <div className="comment-item">
+      <div className="comment-avatar">
+        {avatarUrl ? (
+          <img src={avatarUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : initials}
+      </div>
+      <div className="comment-body">
+        <span className="comment-author">{displayName}</span>
+        <p className="comment-text">{comment.text}</p>
       </div>
     </div>
   );

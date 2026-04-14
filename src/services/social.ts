@@ -168,34 +168,35 @@ export async function fetchComments(shelbyClient: any, videoHash: string): Promi
 
     const comments: Comment[] = [];
     for (const b of list) {
-      let owner = (b.owner || b.address || b.owner_address || '').replace(/^@/, '');
+      let ownerRaw = (b.owner || b.address || b.owner_address || '').replace(/^@/, '');
       const fullBlobName = b.blob_name || b.name || '';
 
       // Extract owner if using the @owner/path format
       if (fullBlobName.startsWith('@')) {
-        owner = fullBlobName.substring(1).split('/')[0] || owner;
+        ownerRaw = fullBlobName.substring(1).split('/')[0] || ownerRaw;
       }
       
       const blobName = fullBlobName.startsWith('@') 
         ? fullBlobName.substring(fullBlobName.indexOf('/') + 1)
         : fullBlobName;
 
-      if (!owner || !blobName) continue;
+      if (!ownerRaw || !blobName) continue;
 
-      for (const base of GATEWAYS) {
-        try {
-          const res = await fetch(`${base}/v1/blobs/${owner}/${blobName}`);
-          if (res.ok) {
-            const raw = await res.text();
-            const text = decodeComment(raw);
-            // Extract timestamp from the last segment after the last dash
-            const lastDash = blobName.lastIndexOf('-');
-            const ts = lastDash >= 0 ? parseInt(blobName.substring(lastDash + 1)) || 0 : 0;
-            comments.push({ text, author: owner, timestamp: ts, id: b.id || blobName });
-            break;
-          }
-        } catch {
-          // Ignore gateway-specific fetch errors
+      const variants = getAddressVariants(ownerRaw);
+
+      outer: for (const base of GATEWAYS) {
+        for (const variant of variants) {
+          try {
+            const res = await fetch(`${base}/v1/blobs/${variant}/${blobName}`);
+            if (res.ok) {
+              const raw = await res.text();
+              const text = decodeComment(raw);
+              const lastDash = blobName.lastIndexOf('-');
+              const ts = lastDash >= 0 ? parseInt(blobName.substring(lastDash + 1)) || 0 : 0;
+              comments.push({ text, author: variant, timestamp: ts, id: b.id || blobName });
+              break outer; // Found it!
+            }
+          } catch { /* continue */ }
         }
       }
     }
