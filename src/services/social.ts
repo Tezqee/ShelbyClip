@@ -299,7 +299,8 @@ export async function fetchProfile(shelbyClient: any, addr: string): Promise<Use
     try {
       const normAddr = normalizeAddr(addr);
       for (const gateway of GATEWAYS) {
-        const res = await fetch(`${gateway}/v1/blobs/${normAddr}/shelby-clip/profile-metadata.json.mp4:::b64:e30?t=${Date.now()}`, { cache: 'no-store' });
+        // Try the stable lean name
+        const res = await fetch(`${gateway}/v1/blobs/${normAddr}/shelby-clip/profile.mp4:::b64:e30?t=${Date.now()}`, { cache: 'no-store' });
         if (res.ok) {
           const parsed = JSON.parse(await res.text());
           if (parsed.displayName || parsed.name || parsed.username) {
