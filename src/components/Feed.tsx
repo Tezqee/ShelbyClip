@@ -521,7 +521,7 @@ export default function Feed() {
     is_written: { _eq: 1 as any },
 
 
-    blob_name: { _ilike: "%shelby-clip/%:::%" }
+    blob_name: { _ilike: "%shelby-clip/%.mp4:::%" }
   };
 
 
@@ -567,10 +567,10 @@ export default function Feed() {
       'profile.json',
       'profile-avatar',
       'profile-metadata',
-      'shelby-clip/profile.',
-      'shelby-clip/profile-',
-      'shelby-clip/social/',
+      'shelby-clip/profile',
       'shelby-clip/metadata',
+      'shelby-clip/avatar',
+      'shelby-clip/social',
       'avatar-',
       'social/',
       'guest',
@@ -599,8 +599,9 @@ export default function Feed() {
         if (!hasAppPattern) return null;
 
         // Profile-save blobs are named shelby-clip/{timestamp}p_{id}.mp4 or shelby-clip/profile.mp4 — reject from video feed
-        const blobSegment = fullBlobName.split(':::')[0];
-        if (/shelby-clip\/\d+p_/.test(blobSegment) || blobSegment.includes('shelby-clip/profile.') || /@.*\/shelby-clip\/\d+p_/.test(blobSegment)) return null;
+        const bSeg = fullBlobName.split(':::')[0];
+        const isTechnicalStyle = /\/\d+p_/.test(bSeg) || bSeg.includes('/profile') || bSeg.includes('/avatar') || bSeg.includes('/social') || bSeg.includes('/metadata');
+        if (isTechnicalStyle) return null;
 
 
 
