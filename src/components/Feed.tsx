@@ -320,9 +320,17 @@ function VideoItem({
   }, [isBuffering, isNear, hasError, handleVideoError]);
 
   const displayName = creatorProfile?.displayName || `@${video.account.substring(0, 6)}...`;
-  const initials = creatorProfile?.displayName 
-    ? creatorProfile.displayName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() 
-    : video.account.substring(video.account.length - 2).toUpperCase();
+  const initials = useMemo(() => {
+    if (!creatorProfile?.displayName) {
+      return video.account.substring(video.account.length - 2).toUpperCase();
+    }
+    return creatorProfile.displayName
+      .split(' ')
+      .map((n: string) => n[0] || '')
+      .join('')
+      .substring(0, 2)
+      .toUpperCase();
+  }, [creatorProfile?.displayName, video.account]);
 
   // If the video fails to load after all retries, render a black placeholder
   // so the vertical scroll layout doesn't collapse and trigger rapid skipping.
