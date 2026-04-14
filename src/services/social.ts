@@ -297,10 +297,10 @@ export async function fetchProfile(shelbyClient: any, addr: string): Promise<Use
     // 1.5 FAST PREFIX SEARCH (Optimized Indexer Query)
     // Instantly try to resolve the most recent blob that follows our stable-prefix protocol.
     try {
-      const normAddr = normalizeAddr(addr);
+      const variants = getAddressVariants(addr);
       const res = await shelbyClient.coordination.getBlobs({
         where: {
-          owner_address: { _eq: normAddr },
+          owner_address: { _in: variants },
           blob_name: { _ilike: 'shelby-clip/profile.mp4:::b64:%' }
         },
         pagination: { limit: 1 },
@@ -370,9 +370,9 @@ export async function fetchProfile(shelbyClient: any, addr: string): Promise<Use
               bName = bName.substring(bName.indexOf('/') + 1);
             }
 
-            // V2 SINGLE BLOB PROTOCOL DECODING (Instant O(1) resolution without Gateway fetching)
-            // Look for `p_` which denotes our profile timestamp prefix, or legacy profile_v2
-            if ((bName.includes('p_') || bName.includes('profile_v2') || bName.includes('_profile')) && bName.includes(':::b64:')) {
+            // V2 SINGLE BLOB PROTOCOL DECODING
+            // Look for `p_` (legacy randomized), `profile.mp4` (current stable), or legacy v2
+            if ((bName.includes('p_') || bName.includes('profile.mp4') || bName.includes('profile_v2') || bName.includes('_profile')) && bName.includes(':::b64:')) {
               try {
                 const b64 = bName.split(':::b64:')[1];
                 const standardB64 = b64.replace(/-/g, '+').replace(/_/g, '/');
