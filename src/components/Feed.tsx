@@ -521,7 +521,7 @@ export default function Feed() {
     is_written: { _eq: 1 as any },
 
 
-    blob_name: { _ilike: "%shelby-clip/%.mp4:::%" }
+    blob_name: { _ilike: "%shelby-clip/%:::%" }
   };
 
 
