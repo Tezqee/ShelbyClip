@@ -12,7 +12,7 @@ export default function BottomNav() {
 
       <NavLink to="/upload" className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}>
         <div className="bottom-nav-plus">
-          <PlusSquare size={28} color="white" />
+          <PlusSquare size={20} color="black" strokeWidth={3} />
         </div>
       </NavLink>
 

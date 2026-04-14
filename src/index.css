@@ -624,12 +624,13 @@ html, body {
 
 .bottom-nav-plus {
   background: white;
-  padding: 4px 12px;
+  padding: 3px 10px;
   border-radius: 8px;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: 10px;
 }
 
 .bottom-nav-plus::before {
