@@ -321,7 +321,7 @@ function VideoItem({
 
   const displayName = creatorProfile?.displayName || `@${video.account.substring(0, 6)}...`;
   const initials = creatorProfile?.displayName 
-    ? creatorProfile.displayName.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase() 
+    ? creatorProfile.displayName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() 
     : video.account.substring(video.account.length - 2).toUpperCase();
 
   // If the video fails to load after all retries, render a black placeholder
