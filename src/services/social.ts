@@ -171,32 +171,38 @@ export async function fetchComments(shelbyClient: any, videoHash: string): Promi
       let ownerRaw = (b.owner || b.address || b.owner_address || '').replace(/^@/, '');
       const fullBlobName = b.blob_name || b.name || '';
 
-      // Extract owner if using the @owner/path format
       if (fullBlobName.startsWith('@')) {
         ownerRaw = fullBlobName.substring(1).split('/')[0] || ownerRaw;
       }
       
-      const blobName = fullBlobName.startsWith('@') 
+      const blobNamePath = fullBlobName.startsWith('@') 
         ? fullBlobName.substring(fullBlobName.indexOf('/') + 1)
         : fullBlobName;
 
-      if (!ownerRaw || !blobName) continue;
+      if (!ownerRaw || !blobNamePath) continue;
 
       const variants = getAddressVariants(ownerRaw);
+      const encodedPath = blobNamePath.split('/')
+        .map(seg => encodeURIComponent(seg).replace(/\(/g, '%28').replace(/\)/g, '%29'))
+        .join('/');
 
       outer: for (const base of GATEWAYS) {
         for (const variant of variants) {
-          try {
-            const res = await fetch(`${base}/v1/blobs/${variant}/${blobName}`);
-            if (res.ok) {
-              const raw = await res.text();
-              const text = decodeComment(raw);
-              const lastDash = blobName.lastIndexOf('-');
-              const ts = lastDash >= 0 ? parseInt(blobName.substring(lastDash + 1)) || 0 : 0;
-              comments.push({ text, author: variant, timestamp: ts, id: b.id || blobName });
-              break outer; // Found it!
-            }
-          } catch { /* continue */ }
+          // Try encoded first (standard), then raw (legacy fallback)
+          const attemptPaths = [encodedPath, blobNamePath];
+          for (const path of attemptPaths) {
+            try {
+              const res = await fetch(`${base}/v1/blobs/${variant}/${path}`);
+              if (res.ok) {
+                const raw = await res.text();
+                const text = decodeComment(raw);
+                const lastDash = blobNamePath.lastIndexOf('-');
+                const ts = lastDash >= 0 ? parseInt(blobNamePath.substring(lastDash + 1)) || 0 : 0;
+                comments.push({ text, author: variant, timestamp: ts, id: b.id || fullBlobName });
+                break outer;
+              }
+            } catch { /* continue */ }
+          }
         }
       }
     }
