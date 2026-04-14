@@ -124,7 +124,7 @@ function CreatorItem({
   const { data: p } = useQuery({
     queryKey: ['profile', addr],
     queryFn: () => fetchProfile(shelbyClient, addr),
-    staleTime: 300000,
+    staleTime: 10000,
   });
 
   useEffect(() => {
