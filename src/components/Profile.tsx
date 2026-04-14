@@ -527,8 +527,9 @@ export default function Profile() {
 
       // Write to the stable known path that fetchProfile step-1.5 always reads directly.
       // Blob name is only 35 bytes — well under the 128-byte chain limit.
-      // Use a lean stable name: profile.mp4 (spoof) with a simple b64 suffix
-      const finalBlobName = 'shelby-clip/profile.mp4:::b64:e30';
+      // NEW PROTOCOL: Stable Prefix + Unique Suffix to allow both speed and overwrite reliability.
+      const saveTimestamp = Date.now();
+      const finalBlobName = `shelby-clip/profile.mp4:::b64:${saveTimestamp}`;
       const finalBlobData = new Uint8Array(Buffer.from(JSON.stringify({
         displayName: editDisplayName.trim(),
         bio: editBio.trim(),
@@ -548,11 +549,10 @@ export default function Profile() {
       });
 
       // Use avatarBase64Value already computed above — no need to re-compress
-      const finalProfileData = {
         displayName: editDisplayName.trim(),
         bio: editBio.trim(),
         avatarUrl: avatarBase64Value || null,
-        timestamp: Date.now()
+        timestamp: saveTimestamp
       };
       
       localStorage.setItem(`shelby_profile_${normAddr}`, JSON.stringify(finalProfileData));

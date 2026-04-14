@@ -294,29 +294,44 @@ export async function fetchProfile(shelbyClient: any, addr: string): Promise<Use
     let gatewayProfile: UserProfile | null = null;
     let gatewayTimestamp = 0;
 
-    // 1.5 DIRECT GATEWAY FETCH: reads the stable profile-metadata.json pointer.
-    // No longer returns unconditionally; feeds into step-3 reconciliation instead.
+    // 1.5 FAST PREFIX SEARCH (Optimized Indexer Query)
+    // Instantly try to resolve the most recent blob that follows our stable-prefix protocol.
     try {
       const normAddr = normalizeAddr(addr);
-      for (const gateway of GATEWAYS) {
-        // Try the stable lean name
-        const res = await fetch(`${gateway}/v1/blobs/${normAddr}/shelby-clip/profile.mp4:::b64:e30?t=${Date.now()}`, { cache: 'no-store' });
-        if (res.ok) {
-          const parsed = JSON.parse(await res.text());
-          if (parsed.displayName || parsed.name || parsed.username) {
-            gatewayProfile = {
-              displayName: parsed.displayName || parsed.name || parsed.username || '',
-              bio: parsed.bio || parsed.description || parsed.about || '',
-              avatarUrl: parsed.avatarBase64 || parsed.avatarUrl || parsed.avatar || parsed.image || null
-            };
-            // timestamp written by Date.now() in the new save protocol (ms)
-            gatewayTimestamp = parsed.timestamp || 0;
-            break;
+      const res = await shelbyClient.coordination.getBlobs({
+        where: {
+          owner_address: { _eq: normAddr },
+          blob_name: { _ilike: 'shelby-clip/profile.mp4:::b64:%' }
+        },
+        pagination: { limit: 1 },
+        orderBy: [{ updated_at: Order_By.Desc }] as any
+      });
+      
+      const list = normalizeBlobs(res);
+      if (list.length > 0) {
+        const b = list[0];
+        const bName = b.blob_name || '';
+        // In this protocol, the suffix IS the timestamp (encoded in b64 but we put it as a raw string after the last :)
+        const segments = bName.split(':::b64:');
+        if (segments.length > 1) {
+          const suffixTs = parseInt(segments[1]);
+          if (suffixTs > 0) {
+            gatewayTimestamp = suffixTs;
+            // Now fetch the actual JSON body content
+            const blobRes = await fetch(`${GATEWAYS[0]}/v1/blobs/${normAddr}/${bName}?t=${suffixTs}`, { cache: 'no-store' });
+            if (blobRes.ok) {
+              const parsed = JSON.parse(await blobRes.text());
+              gatewayProfile = {
+                displayName: parsed.displayName || parsed.name || parsed.username || '',
+                bio: parsed.bio || parsed.description || parsed.about || '',
+                avatarUrl: parsed.avatarBase64 || parsed.avatarUrl || parsed.avatar || parsed.image || null
+              };
+            }
           }
         }
       }
     } catch {
-      // Quietly fall through to indexer if the blob does not exist yet
+      // Quietly fall through to legacy radar
     }
 
     // 2. Query target user's profile metadata from Indexer (Unique Path Radar)
