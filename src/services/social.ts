@@ -291,27 +291,31 @@ export async function fetchProfile(shelbyClient: any, addr: string): Promise<Use
     let indexerTimestamp = 0;
     let avatarUrl = localProfile?.avatarUrl || null;
 
-    // 1.5 DIRECT GATEWAY FETCH (ZERO-INDEXER BYPASS)
-    // Instantly try to resolve the global static pointer directly from the storage network.
+    let gatewayProfile: UserProfile | null = null;
+    let gatewayTimestamp = 0;
+
+    // 1.5 DIRECT GATEWAY FETCH: reads the stable profile-metadata.json pointer.
+    // No longer returns unconditionally; feeds into step-3 reconciliation instead.
     try {
       const normAddr = normalizeAddr(addr);
       for (const gateway of GATEWAYS) {
         const res = await fetch(`${gateway}/v1/blobs/${normAddr}/shelby-clip/profile-metadata.json?t=${Date.now()}`, { cache: 'no-store' });
         if (res.ok) {
-          const raw = await res.text();
-          const parsed = JSON.parse(raw);
+          const parsed = JSON.parse(await res.text());
           if (parsed.displayName || parsed.name || parsed.username) {
-            // Unconditional victory - bypass everything else!
-            return {
+            gatewayProfile = {
               displayName: parsed.displayName || parsed.name || parsed.username || '',
               bio: parsed.bio || parsed.description || parsed.about || '',
-              avatarUrl: parsed.avatarUrl || parsed.avatar || parsed.image || null
+              avatarUrl: parsed.avatarBase64 || parsed.avatarUrl || parsed.avatar || parsed.image || null
             };
+            // timestamp written by Date.now() in the new save protocol (ms)
+            gatewayTimestamp = parsed.timestamp || 0;
+            break;
           }
         }
       }
     } catch {
-      // Quietly fallthrough to indexer if the static pointer hasn't been uploaded yet by the user
+      // Quietly fall through to indexer if the blob does not exist yet
     }
 
     // 2. Query target user's profile metadata from Indexer (Unique Path Radar)
@@ -444,11 +448,22 @@ export async function fetchProfile(shelbyClient: any, addr: string): Promise<Use
       // Indexer radar failed
     }
 
-    // 3. Reconciliation: Favor indexer if it's authoritative or local if it's newer
+    // 3. Reconciliation: pick the freshest source.
+    // indexerTimestamp from safeDesc `t` is in SECONDS; localStorage and gateway are in ms. Normalise.
+    const indexerTimestampMs = indexerTimestamp > 1e12 ? indexerTimestamp : indexerTimestamp * 1000;
+
+    // localStorage wins if it is the most recent
+    if (localProfile && localTimestamp > Math.max(gatewayTimestamp, indexerTimestampMs)) {
+      return localProfile;
+    }
+
+    // gateway (profile-metadata.json) wins if newer than indexer
+    if (gatewayProfile && gatewayTimestamp >= indexerTimestampMs) {
+      return { ...gatewayProfile, avatarUrl: gatewayProfile.avatarUrl || avatarUrl };
+    }
+
+    // indexer blob payload as last resort
     if (json.displayName || json.name || json.username) {
-      if (localProfile && localTimestamp > indexerTimestamp) {
-        return localProfile;
-      }
       return {
         displayName: json.displayName || json.name || json.username || '',
         bio: json.bio || json.description || json.about || '',

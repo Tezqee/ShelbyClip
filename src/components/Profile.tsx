@@ -508,59 +508,32 @@ export default function Profile() {
     setIsSavingProfile(true);
 
     try {
-      const timestamp = Math.floor(Date.now() / 1000); // matching upload.tsx timing
       const normAddr = normalizeAddr(targetAddress);
-      
-      // PARITY: Matching Upload.tsx expiration logic 100%
       const expirationMicros = (Date.now() * 1000) + (365 * 24 * 60 * 60 * 1000000);
 
-      // FATAL FIX: Aptos smart contract strictly limits `blobName` argument to ~128 bytes.
-      // If we put the full `bio` inside the filename, it triggers 400 Bad Request / 500 RPC Simulation crashes!
-      // We only store a highly truncated name in the filename for O(1) global sync.
-      const safeDesc = JSON.stringify({
-        d: editDisplayName.trim().substring(0, 16), // strict 16 char cap
-        t: timestamp
-      });
-      
-      let finalBlobName = '';
-      let finalBlobData: Uint8Array;
-
-      const encodedDesc = Buffer.from(safeDesc).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+      // Build the blob data: full profile JSON including optional avatar
+      let avatarBase64Value: string | null = profileData?.avatarUrl || null;
 
       if (editAvatarFile) {
         try {
           const compressedBytes = await compressAvatar(editAvatarFile);
-          const imageBase64 = Buffer.from(compressedBytes).toString('base64');
-          
-          // Full boundless data goes inside the actual JSON blob body payload!
-          const jsonPayload = JSON.stringify({
-             displayName: editDisplayName.trim(),
-             bio: editBio.trim(),
-             t: Date.now(),
-             avatarBase64: `data:image/jpeg;base64,${imageBase64}`
-          });
-          
-          finalBlobData = new Uint8Array(Buffer.from(jsonPayload));
-          
-          // SPOOF AS MP4 to 100% bypass all Gateway WAF size validations!
-          finalBlobName = `shelby-clip/${timestamp}p_${Math.random().toString(36).substring(2, 8)}.mp4:::b64:${encodedDesc}`;
+          avatarBase64Value = `data:image/jpeg;base64,${Buffer.from(compressedBytes).toString('base64')}`;
         } catch (err: any) {
           alert('Gambar gagal diproses. Gunakan gambar lain.');
           setIsSavingProfile(false);
           return;
         }
-      } else {
-        const jsonPayload = JSON.stringify({
-           displayName: editDisplayName.trim(),
-           bio: editBio.trim(),
-           t: Date.now(),
-           avatarBase64: null
-        });
-        finalBlobData = new Uint8Array(Buffer.from(jsonPayload));
-        
-        // SPOOF AS MP4 to guarantee 100% delivery via Gateway WAF
-        finalBlobName = `shelby-clip/${timestamp}p_${Math.random().toString(36).substring(2, 8)}.mp4:::b64:${encodedDesc}`;
       }
+
+      // Write to the stable known path that fetchProfile step-1.5 always reads directly.
+      // Blob name is only 35 bytes — well under the 128-byte chain limit.
+      const finalBlobName = 'shelby-clip/profile-metadata.json';
+      const finalBlobData = new Uint8Array(Buffer.from(JSON.stringify({
+        displayName: editDisplayName.trim(),
+        bio: editBio.trim(),
+        avatarBase64: avatarBase64Value,
+        timestamp: Date.now()
+      })));
 
       await new Promise<void>((resolve, reject) => {
         uploadBlobs.mutate({
@@ -573,20 +546,11 @@ export default function Profile() {
         });
       });
 
-      // Predict the Avatar URL correctly if they just uploaded one, otherwise keep old
-      let predictedAvatarUrl = profileData?.avatarUrl || null;
-      if (editAvatarFile) {
-        try {
-          const compressedBytes = await compressAvatar(editAvatarFile);
-          predictedAvatarUrl = `data:image/jpeg;base64,${Buffer.from(compressedBytes).toString('base64')}`;
-        } catch { }
-      }
-
-      // PHASE 3: SUCCESS & UI REFRESH
+      // Use avatarBase64Value already computed above — no need to re-compress
       const finalProfileData = {
         displayName: editDisplayName.trim(),
         bio: editBio.trim(),
-        avatarUrl: predictedAvatarUrl || null,
+        avatarUrl: avatarBase64Value || null,
         timestamp: Date.now()
       };
       
@@ -599,9 +563,8 @@ export default function Profile() {
       });
 
       queryClient.invalidateQueries({ queryKey: ['profile', targetAddress] });
-      queryClient.invalidateQueries({ queryKey: ['globalBlobs'] });
       
-      alert("MEGA TEST BERHASIL: Profile tersimpan dengan V2 Single Blob Protocol!");
+      alert("Profil berhasil disimpan!");
       setIsEditing(false);
       setEditAvatarFile(null);
       setIsSavingProfile(false);
