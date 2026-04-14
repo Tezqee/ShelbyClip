@@ -623,18 +623,31 @@ export default function Feed() {
           "https://api.testnet.shelby.xyz/shelby"
         ].filter(Boolean);
 
+        // Robust Address Variants for Gateway Discovery
+        const variants = [owner];
+        if (owner.startsWith('0x')) {
+          const clean = owner.replace(/^0x/, '');
+          if (clean.length === 64) {
+             const short = '0x' + clean.replace(/^0+/, '');
+             if (short !== owner) variants.push(short);
+          } else {
+             const long = '0x' + clean.padStart(64, '0');
+             if (long !== owner) variants.push(long);
+          }
+        }
+
         // iOS: put .mp4 URL first so Safari can detect MIME type without Range-Request check
-        const urls = gateways.flatMap(base => isIOS ? [
-          `${base}/v1/blobs/${owner}/${cleanName}.mp4`,          // 1. .mp4 hint (iOS first)
-          `${base}/v1/blobs/${owner}/${cleanName}`,              // 2. Raw
-          `${base}/v1/blobs/${owner}/${pathSegmentsSemi}`,       // 3. Partial encoded
-          `${base}/v1/blobs/${owner}/${pathSegmentsFull}`,       // 4. Full encoded
+        const urls = gateways.flatMap(base => variants.flatMap(v => isIOS ? [
+          `${base}/v1/blobs/${v}/${cleanName}.mp4`,          // 1. .mp4 hint (iOS first)
+          `${base}/v1/blobs/${v}/${cleanName}`,              // 2. Raw
+          `${base}/v1/blobs/${v}/${pathSegmentsSemi}`,       // 3. Partial encoded
+          `${base}/v1/blobs/${v}/${pathSegmentsFull}`,       // 4. Full encoded
         ] : [
-          `${base}/v1/blobs/${owner}/${cleanName}`,              // 1. Raw
-          `${base}/v1/blobs/${owner}/${pathSegmentsSemi}`,       // 2. Partial encoded
-          `${base}/v1/blobs/${owner}/${pathSegmentsFull}`,       // 3. Full encoded
-          `${base}/v1/blobs/${owner}/${cleanName}.mp4`           // 4. MIME Hack fallback
-        ]);
+          `${base}/v1/blobs/${v}/${cleanName}`,              // 1. Raw
+          `${base}/v1/blobs/${v}/${pathSegmentsSemi}`,       // 2. Partial encoded
+          `${base}/v1/blobs/${v}/${pathSegmentsFull}`,       // 3. Full encoded
+          `${base}/v1/blobs/${v}/${cleanName}.mp4`           // 4. MIME Hack fallback
+        ]));
 
         const descParts = fullBlobName.split(':::');
         let finalDescription = '';
