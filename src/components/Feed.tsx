@@ -562,18 +562,21 @@ export default function Feed() {
     // Blacklist for unwanted/test videos (Stricter filter reduces need for this)
     const hiddenBlobNames: string[] = [];
 
-    // Known non-video blobs to always exclude
+    // Known non-video blobs to always exclude (Clutter cleanup)
     const NON_VIDEO_PATTERNS = [
       'profile.json',
       'profile-avatar',
+      'profile-metadata',
       'shelby-clip/profile.',
-      'shelby-clip/avatar-',
+      'shelby-clip/profile-',
+      'shelby-clip/social/',
+      'shelby-clip/metadata',
+      'avatar-',
       'social/',
       'guest',
       'gues',
       'test',
       'temp',
-      'metadata',
       'null',
       'undefined'
     ];
@@ -597,7 +600,7 @@ export default function Feed() {
 
         // Profile-save blobs are named shelby-clip/{timestamp}p_{id}.mp4 or shelby-clip/profile.mp4 — reject from video feed
         const blobSegment = fullBlobName.split(':::')[0];
-        if (/shelby-clip\/\d+p_/.test(blobSegment) || blobSegment.includes('shelby-clip/profile.')) return null;
+        if (/shelby-clip\/\d+p_/.test(blobSegment) || blobSegment.includes('shelby-clip/profile.') || /@.*\/shelby-clip\/\d+p_/.test(blobSegment)) return null;
 
 
 
