@@ -525,16 +525,14 @@ export default function Profile() {
         }
       }
 
-      // Write to the stable known path that fetchProfile step-1.5 always reads directly.
-      // Blob name is only 35 bytes — well under the 128-byte chain limit.
-      // NEW PROTOCOL: Stable Prefix + Unique Suffix to allow both speed and overwrite reliability.
+      // NEW PROTOCOL: Stable Prefix + Unique Suffix
       const saveTimestamp = Date.now();
       const finalBlobName = `shelby-clip/profile.mp4:::b64:${saveTimestamp}`;
       const finalBlobData = new Uint8Array(Buffer.from(JSON.stringify({
         displayName: editDisplayName.trim(),
         bio: editBio.trim(),
         avatarBase64: avatarBase64Value,
-        timestamp: Date.now()
+        timestamp: saveTimestamp
       })));
 
       await new Promise<void>((resolve, reject) => {
@@ -548,7 +546,7 @@ export default function Profile() {
         });
       });
 
-      // Use avatarBase64Value already computed above — no need to re-compress
+      const finalProfileData = {
         displayName: editDisplayName.trim(),
         bio: editBio.trim(),
         avatarUrl: avatarBase64Value || null,
