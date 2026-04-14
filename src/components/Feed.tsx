@@ -147,7 +147,16 @@ function VideoItem({
 
   const { data: creatorProfile } = useQuery({
     queryKey: ['profile', creatorAddr],
-    queryFn: () => fetchProfile(shelbyClient, creatorAddr),
+    queryFn: async () => {
+      // If it's my own profile, check localStorage for zero-latency
+      if (myAddr === creatorAddr) {
+        try {
+          const saved = localStorage.getItem('shelby_profile');
+          if (saved) return JSON.parse(saved);
+        } catch { /* ignore */ }
+      }
+      return fetchProfile(shelbyClient, creatorAddr);
+    },
     staleTime: 5000, // Sync faster globally (5 seconds)
   });
 
