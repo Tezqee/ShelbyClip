@@ -645,18 +645,21 @@ export default function Profile() {
     // Blacklist for unwanted/secret videos (Stricter filter reduces need for this)
     const hiddenBlobNames: string[] = [];
 
-    // Known non-video blobs to always exclude
+    // Known non-video blobs to always exclude (Clutter cleanup)
     const NON_VIDEO_PATTERNS = [
       'profile.json',
       'profile-avatar',
+      'profile-metadata',
       'shelby-clip/profile.',
-      'shelby-clip/avatar-',
+      'shelby-clip/profile-',
+      'shelby-clip/social/',
+      'shelby-clip/metadata',
+      'avatar-',
       'social/',
       'guest',
       'gues',
       'test',
       'temp',
-      'metadata',
       'null',
       'undefined'
     ];
