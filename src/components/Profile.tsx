@@ -525,9 +525,10 @@ export default function Profile() {
         }
       }
 
-      // NEW PROTOCOL: Stable Prefix + Unique Suffix
+      // NEW PROTOCOL: Stable Prefix + Unique Suffix (Base64 encoded timestamp)
       const saveTimestamp = Date.now();
-      const finalBlobName = `shelby-clip/profile.mp4:::b64:${saveTimestamp}`;
+      const b64Timestamp = Buffer.from(saveTimestamp.toString()).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+      const finalBlobName = `shelby-clip/profile.mp4:::b64:${b64Timestamp}`;
       const finalBlobData = new Uint8Array(Buffer.from(JSON.stringify({
         displayName: editDisplayName.trim(),
         bio: editBio.trim(),

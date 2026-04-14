@@ -298,7 +298,7 @@ export async function fetchProfile(shelbyClient: any, addr: string): Promise<Use
     // Instantly try to resolve the most recent blob that follows our stable-prefix protocol.
     try {
       const variants = getAddressVariants(addr);
-      const res = await shelbyClient.coordination.getBlobs({
+      const res = await (shelbyClient as any).coordination.getBlobs({
         where: {
           owner_address: { _in: variants },
           blob_name: { _ilike: 'shelby-clip/profile.mp4:::b64:%' }
@@ -311,28 +311,41 @@ export async function fetchProfile(shelbyClient: any, addr: string): Promise<Use
       if (list.length > 0) {
         const b = list[0];
         const bName = b.blob_name || '';
-        // In this protocol, the suffix IS the timestamp (encoded in b64 but we put it as a raw string after the last :)
         const segments = bName.split(':::b64:');
         if (segments.length > 1) {
-          const suffixTs = parseInt(segments[1]);
-          if (suffixTs > 0) {
-            gatewayTimestamp = suffixTs;
-            // Now fetch the actual JSON body content
-            const normAddr = variants[0];
-            const blobRes = await fetch(`${GATEWAYS[0]}/v1/blobs/${normAddr}/${bName}?t=${suffixTs}`, { cache: 'no-store' });
-            if (blobRes.ok) {
-              const parsed = JSON.parse(await blobRes.text());
-              gatewayProfile = {
-                displayName: parsed.displayName || parsed.name || parsed.username || '',
-                bio: parsed.bio || parsed.description || parsed.about || '',
-                avatarUrl: parsed.avatarBase64 || parsed.avatarUrl || parsed.avatar || parsed.image || null
-              };
+          const b64Part = segments[1];
+          try {
+            const standardB64 = b64Part.replace(/-/g, '+').replace(/_/g, '/');
+            const suffixTs = parseInt(Buffer.from(standardB64, 'base64').toString('utf8'));
+
+            if (suffixTs > 0) {
+              gatewayTimestamp = suffixTs;
+              
+              // Try all gateways and all address variants for maximum reliability
+              outer: for (const gateway of GATEWAYS) {
+                for (const v of variants) {
+                  try {
+                    const blobRes = await fetch(`${gateway}/v1/blobs/${v}/${bName}?t=${suffixTs}`, { cache: 'no-store' });
+                    if (blobRes.ok) {
+                      const parsed = JSON.parse(await blobRes.text());
+                      gatewayProfile = {
+                        displayName: parsed.displayName || parsed.name || parsed.username || '',
+                        bio: parsed.bio || parsed.description || parsed.about || '',
+                        avatarUrl: parsed.avatarBase64 || parsed.avatarUrl || parsed.avatar || parsed.image || null
+                      };
+                      break outer; // Success!
+                    }
+                  } catch (e) { /* continue */ }
+                }
+              }
             }
+          } catch (e) {
+            console.warn("Failed to decode profile sync timestamp:", e);
           }
         }
       }
-    } catch {
-      // Quietly fall through to legacy radar
+    } catch (e) {
+      console.warn("Fast-prefix search failed:", e);
     }
 
     // 2. Query target user's profile metadata from Indexer (Unique Path Radar)
