@@ -18,7 +18,7 @@ export default function CommentsModal({ videoId, onClose }: Props) {
   const queryClient = useQueryClient();
   const videoHash = useMemo(() => getVideoHash(videoId), [videoId]);
   
-  const { data: remoteComments = [], isLoading: loading, refetch } = useQuery({
+  const { data: remoteComments = [], isLoading: loading } = useQuery({
     queryKey: ['comments', videoHash],
     queryFn: () => fetchComments(shelbyClient, videoHash),
     staleTime: 2000, 
