@@ -183,7 +183,7 @@ export async function fetchComments(shelbyClient: any, videoHash: string): Promi
 
       const variants = getAddressVariants(ownerRaw);
       const encodedPath = blobNamePath.split('/')
-        .map(seg => encodeURIComponent(seg).replace(/\(/g, '%28').replace(/\)/g, '%29'))
+        .map((seg: string) => encodeURIComponent(seg).replace(/\(/g, '%28').replace(/\)/g, '%29'))
         .join('/');
 
       // BRUTE-FORCE STRATEGY: Try every possible combination of gateway, address variant, and path encoding
