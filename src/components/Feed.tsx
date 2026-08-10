@@ -29,6 +29,22 @@ interface Video {
   description: string;
 }
 
+const SOCIAL_CONTRACT_ADDRESS = '0x9ce0fd7ef60010764b6737ed49e1296fb5e34adad586b8ef33276b3ad67f808e';
+
+function getBlobList(result: unknown): any[] {
+  if (Array.isArray(result)) return result;
+  const value = result as any;
+  const candidates = [
+    value?.blobs,
+    value?.data,
+    value?.data?.blobs,
+    value?.data?.data,
+    value?.data?.data?.blobs,
+    value?.hits,
+  ];
+  return candidates.find(Array.isArray) || [];
+}
+
 function VideoItem({ 
   video, 
   isGlobalMuted, 
@@ -269,7 +285,7 @@ function VideoItem({
       v.pause();
       setIsBuffering(false);
     }
-  }, [isActive]);
+  }, [isActive, videoSrc]);
 
   const handleTimeUpdate = () => {
     if (videoRef.current) {
@@ -394,7 +410,7 @@ function VideoItem({
       <video
         ref={videoRef}
         className="video-main"
-        loop playsInline={true} preload="auto"
+        loop autoPlay playsInline={true} preload="auto"
         muted={isGlobalMuted}
         onTimeUpdate={handleTimeUpdate}
         onWaiting={() => { if (!videoRef.current?.paused) setIsBuffering(true); }}
@@ -517,14 +533,6 @@ export default function Feed() {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   );
 
-  const videoFilters = {
-    is_written: { _eq: 1 as any },
-
-
-    blob_name: { _ilike: "%shelby-clip/%:::%" }
-  };
-
-
   const [showNewPill, setShowNewPill] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const topVideoIdRef = useRef<string | null>(null);
@@ -533,17 +541,18 @@ export default function Feed() {
   // Global Observer will be initialized after videos are defined to prevent ReferenceError
 
 
-  const { data: globalBlobs, isLoading, error } = useQuery({
+  const { data: globalBlobs, isLoading, error, refetch } = useQuery({
     queryKey: ['globalBlobs'],
     queryFn: async () => {
       return await shelbyClient.coordination.getBlobs({
-        where: videoFilters,
+        where: { object_name: { _ilike: '%/shelby-clip/%' } },
         pagination: { limit: 100 },
-        // Bypass poor SDK typescript signature that forces object but GraphQL strictly needs array
-        orderBy: [{ updated_at: Order_By.Desc }] as any
+        orderBy: [{ created_at: Order_By.Desc }] as any
       });
     },
-    refetchInterval: 10000, 
+    staleTime: 60000,
+    refetchInterval: 60000,
+    retry: false,
   });
 
 
@@ -554,10 +563,7 @@ export default function Feed() {
     // Debug: See what exactly we are getting from Shelby
 
 
-    // Handle different possible response structures from SDK
-    const blobList = Array.isArray(globalBlobs)
-      ? globalBlobs
-      : (globalBlobs as any).blobs || (globalBlobs as any).hits || [];
+    const blobList = getBlobList(globalBlobs);
 
     // Blacklist for unwanted/test videos (Stricter filter reduces need for this)
     const hiddenBlobNames: string[] = [];
@@ -581,11 +587,19 @@ export default function Feed() {
       'undefined'
     ];
 
-    return blobList
+    return [...blobList]
+      .sort((a: any, b: any) => {
+        const aTime = new Date(a.updated_at || a.created_at || 0).getTime();
+        const bTime = new Date(b.updated_at || b.created_at || 0).getTime();
+        return bTime - aTime;
+      })
       .map((b: any) => {
-        const fullBlobName = b.blob_name || b.blobNameSuffix || b.name || "";
-        let owner = b.owner || b.address || b.owner_address || "0x0";
-        let cleanName = fullBlobName;
+        const fullBlobName = b.object_name || b.objectName || b.blob_name || b.blobName || b.blobNameSuffix || b.name || "";
+        let owner = b.owner || b.address || b.owner_address || b.ownerAddress || b.account || b.uploader || "0x0";
+        let cleanName = b.blobNameSuffix || fullBlobName;
+
+        const normalizedBlobOwner = owner.toString().toLowerCase().replace(/^0x/, '').padStart(64, '0');
+        if (normalizedBlobOwner === SOCIAL_CONTRACT_ADDRESS.slice(2)) return null;
 
         // Skip non-video blobs (profile metadata, avatar, social markers, etc.)
         const lowerName = fullBlobName.toLowerCase();
@@ -593,7 +607,8 @@ export default function Feed() {
         if (IS_INTERNAL) return null;
         
         // Strict naming check: Real videos follow the {timestamp}_{id} format (now with .mp4) before ':::'
-        const hasAppPattern = fullBlobName.includes('shelby-clip/') && fullBlobName.includes(':::');
+        const hasAppPattern = fullBlobName.includes('shelby-clip/') &&
+          (fullBlobName.includes(':::') || lowerName.endsWith('.mp4'));
         
         // Final gate: Must have our app prefix and the metadata separator
         if (!hasAppPattern) return null;
@@ -605,8 +620,15 @@ export default function Feed() {
 
 
 
-        // Ensure owner is a string and remove any @ prefix
+        // Prefer the owner namespace embedded in the object name when present.
         owner = owner.toString().replace(/^@/, '');
+        const nameParts = fullBlobName.replace(/^@/, '').split('/');
+        if (nameParts[0]?.startsWith('0x')) {
+          owner = nameParts[0];
+        }
+        const normalizedResolvedOwner = owner.toString().toLowerCase().replace(/^0x/, '').padStart(64, '0');
+        if (normalizedResolvedOwner === SOCIAL_CONTRACT_ADDRESS.slice(2)) return null;
+        const displayOwner = (b.account || b.uploader || b.uploader_address || b.uploaderAddress || owner).toString();
 
         // If the blob name starts with @, it contains the owner address
         // Format: @0xABC/path/to/blob
@@ -621,6 +643,16 @@ export default function Feed() {
           cleanName = parts.join('/');
         }
 
+        // Some coordination responses keep the wallet prefix without an @ marker.
+        const ownerPrefix = `${owner}/`;
+        if (cleanName.startsWith(ownerPrefix)) {
+          cleanName = cleanName.substring(ownerPrefix.length);
+        }
+        if (!cleanName.includes('shelby-clip/')) {
+          const namespaceIndex = fullBlobName.indexOf('shelby-clip/');
+          if (namespaceIndex >= 0) cleanName = fullBlobName.substring(namespaceIndex);
+        }
+
         // Skip if this video is in the blacklist
         if (hiddenBlobNames.some(name => fullBlobName.includes(name))) {
           return null;
@@ -632,17 +664,19 @@ export default function Feed() {
           .map((seg: string) => encodeURIComponent(seg).replace(/\(/g, '%28').replace(/\)/g, '%29'))
           .join('/');
         const pathSegmentsFull = encodeURIComponent(cleanName).replace(/\(/g, '%28').replace(/\)/g, '%29');
+        const rawPath = cleanName.replace(/\.mp4\.mp4$/i, '.mp4');
 
         // Define multiple stable gateways for fallback (with .env support)
         const gateways = [
           import.meta.env.VITE_GATEWAY_URL_1,
           import.meta.env.VITE_GATEWAY_URL_2,
-          "https://api.testnet.aptoslabs.com/shelby",
-          "https://api.testnet.shelby.xyz/shelby"
+          "https://media-kit.shelby.xyz",
+          "https://api.shelbynet.shelby.xyz/shelby",
+          "https://shelby.shelbynet.shelby.xyz/shelby"
         ].filter(Boolean);
 
         // Robust Address Variants for Gateway Discovery
-        const variants = [owner];
+        const variants = [owner, normalizeAddr(owner)].filter((value, index, list) => value && list.indexOf(value) === index);
         if (owner.startsWith('0x')) {
           const clean = owner.replace(/^0x/, '');
           if (clean.length === 64) {
@@ -656,22 +690,24 @@ export default function Feed() {
 
         // iOS: put .mp4 URL first so Safari can detect MIME type without Range-Request check
         const urls = gateways.flatMap(base => variants.flatMap(v => isIOS ? [
-          `${base}/v1/blobs/${v}/${cleanName}.mp4`,          // 1. .mp4 hint (iOS first)
-          `${base}/v1/blobs/${v}/${cleanName}`,              // 2. Raw
+          `${base}/v1/blobs/${v}/${rawPath}`,                // 1. Raw object path
+          `${base}/v1/blobs/${v}/${rawPath}.mp4`,             // 2. .mp4 hint
           `${base}/v1/blobs/${v}/${pathSegmentsSemi}`,       // 3. Partial encoded
           `${base}/v1/blobs/${v}/${pathSegmentsFull}`,       // 4. Full encoded
         ] : [
-          `${base}/v1/blobs/${v}/${cleanName}`,              // 1. Raw
+          `${base}/v1/blobs/${v}/${rawPath}`,                // 1. Raw object path
           `${base}/v1/blobs/${v}/${pathSegmentsSemi}`,       // 2. Partial encoded
           `${base}/v1/blobs/${v}/${pathSegmentsFull}`,       // 3. Full encoded
-          `${base}/v1/blobs/${v}/${cleanName}.mp4`           // 4. MIME Hack fallback
+          `${base}/v1/blobs/${v}/${rawPath}.mp4`              // 4. MIME Hack fallback
         ]));
 
         const descParts = fullBlobName.split(':::');
         let finalDescription = '';
         if (descParts.length > 1) {
           const rawDesc = descParts[1];
-          if (rawDesc.startsWith('b64:')) {
+          if (rawDesc === 'm') {
+            finalDescription = '';
+          } else if (rawDesc.startsWith('b64:')) {
             try {
               const decoded = Buffer.from(rawDesc.substring(4), 'base64').toString('utf-8');
               // If decoded is profile-format JSON ({d, t}), it is NOT a caption — blank it
@@ -690,15 +726,21 @@ export default function Feed() {
         }
 
         return {
-          id: b.id || b.name || b.blob_name || Math.random().toString(),
+          id: b.id || b.name || b.blob_name || b.object_name || fullBlobName,
           rawName: fullBlobName,
           urls,
-          account: owner.toString(),
+          account: displayOwner,
           description: finalDescription
         };
       })
-      .filter((v: any) => v !== null);
+      .filter((v): v is Video => v !== null);
   }, [globalBlobs, error]);
+
+  const rawBlobCount = getBlobList(globalBlobs).length;
+  const rawBlobSamples = getBlobList(globalBlobs)
+    .slice(0, 3)
+    .map((blob: any) => blob.name || blob.object_name || blob.objectName || blob.blob_name || '?')
+    .join(' | ');
 
   // Real-time detection of new videos
   useEffect(() => {
@@ -752,8 +794,11 @@ export default function Feed() {
 
   if (error) {
     return (
-      <div className="feed-container flex items-center justify-center p-8">
-        <h2 style={{ color: 'var(--destructive)' }}>Error: {(error as Error).message}</h2>
+      <div className="feed-container flex flex-col items-center justify-center gap-4 p-8 text-center">
+        <h2 style={{ color: 'var(--muted-foreground)' }}>Feed is temporarily unavailable.</h2>
+        <button className="primary-button" onClick={() => void refetch()}>
+          Try again
+        </button>
       </div>
     );
   }
@@ -763,6 +808,14 @@ export default function Feed() {
       <div className="feed-container flex flex-col items-center justify-center p-8 text-center">
         <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎥</div>
         <h2 style={{ color: 'var(--muted-foreground)' }}>No videos found.</h2>
+        <p style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem', opacity: 0.7 }}>
+          Shelby returned {rawBlobCount} blob{rawBlobCount === 1 ? '' : 's'}.
+        </p>
+        {rawBlobSamples && (
+          <p style={{ color: 'var(--muted-foreground)', fontSize: '0.65rem', opacity: 0.5, maxWidth: '90%', overflowWrap: 'anywhere' }}>
+            {rawBlobSamples}
+          </p>
+        )}
       </div>
     );
   }

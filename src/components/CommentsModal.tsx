@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useShelbyClient } from '@shelby-protocol/react';
-import { useUploadBlobs } from '@shelby-protocol/react';
-import { useWallet } from '@aptos-labs/wallet-adapter-react';
 import { X, Send, Loader2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchComments, getCommentBlobName, encodeComment, getVideoHash, fetchProfile, type Comment } from '../services/social';
+import { fetchComments, getVideoHash, fetchProfile } from '../services/social';
+import type { Comment } from '../types';
+import { useAptosSocial } from '../hooks/useAptosSocial';
+import { useToast } from './ToastContext';
 
 interface Props {
   videoId: string;
@@ -12,10 +12,14 @@ interface Props {
 }
 
 export default function CommentsModal({ videoId, onClose }: Props) {
-  const shelbyClient = useShelbyClient();
-  const uploadBlobs = useUploadBlobs({});
-  const { account, signAndSubmitTransaction, connected } = useWallet();
+  const { 
+    account, 
+    connected, 
+    handleAddComment, 
+    shelbyClient 
+  } = useAptosSocial();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const videoHash = useMemo(() => getVideoHash(videoId), [videoId]);
   
   const { data: remoteComments = [], isLoading: loading } = useQuery({
@@ -67,38 +71,28 @@ export default function CommentsModal({ videoId, onClose }: Props) {
   }, [comments.length]);
 
   const handlePost = async () => {
-    if (!text.trim() || !account || !signAndSubmitTransaction) return;
+    if (!text.trim() || !account) return;
     setPosting(true);
-    const ts = Date.now();
-    const blobName = getCommentBlobName(videoHash, ts);
-    const myAddr = account.address.toString();
-    const newComment: Comment = { text: text.trim(), author: myAddr, timestamp: ts, id: blobName };
-
+    let pendingId = '';
     try {
-      // 1. Optimistic Update (UI + Pending Storage)
+      const ts = Date.now();
+      const myAddr = account.address.toString();
+      pendingId = `pending-${ts}`;
+      const newComment: Comment = { text: text.trim(), author: myAddr, timestamp: ts, id: pendingId };
+
+      // 1. Optimistic Update
       setPendingComments(prev => [...prev, newComment]);
       setText('');
 
-      // 2. Real Upload
-      const encoded = encodeComment(text.trim());
-      const blobData = new TextEncoder().encode(encoded);
-      await new Promise<void>((resolve, reject) => {
-        uploadBlobs.mutate(
-          {
-            signer: { account, signAndSubmitTransaction },
-            blobs: [{ blobName, blobData }],
-            expirationMicros: Date.now() * 1000 + (365 * 24 * 60 * 60 * 1000000),
-          },
-          { onSuccess: () => resolve(), onError: (e: any) => reject(e) }
-        );
-      });
+      // 2. Real Upload using hook
+      await handleAddComment(videoHash, text.trim());
 
       // 3. Refresh Query Cache
       queryClient.invalidateQueries({ queryKey: ['comments', videoHash] });
     } catch (e: any) {
-      alert('Failed to post: ' + (e.message || e));
+      showToast('Failed to post: ' + (e.message || e), 'error');
       // Remove failed comment from pending
-      setPendingComments(prev => prev.filter(p => p.id !== blobName));
+      setPendingComments(prev => prev.filter(p => p.id !== pendingId));
     } finally {
       setPosting(false);
     }

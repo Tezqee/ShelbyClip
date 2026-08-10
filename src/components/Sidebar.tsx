@@ -1,6 +1,7 @@
 import { NavLink, Link } from 'react-router-dom';
-import { Home, PlusSquare, User, Users, Check, Loader2 } from 'lucide-react';
+import { Users, Check, Loader2 } from 'lucide-react';
 import { useShelbyClient } from '@shelby-protocol/react';
+import { SidebarHomeIcon, SidebarPostIcon, SidebarProfileIcon } from './SidebarIcons';
 import { useUploadBlobs } from '@shelby-protocol/react';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
 import { useQuery } from '@tanstack/react-query';
@@ -25,11 +26,13 @@ export default function Sidebar() {
     queryKey: ['discovery-creators'],
     queryFn: async () => {
       return await shelbyClient.coordination.getBlobs({
-        where: { blob_name: { _ilike: "%shelby-clip/%:::%" } },
-        pagination: { limit: 100 }
+        where: { object_name: { _ilike: "shelby-clip/%" } },
+        pagination: { limit: 12 }
       });
     },
-    refetchInterval: 120000,
+    staleTime: 300000,
+    refetchInterval: 300000,
+    retry: false,
   });
 
   const creators = useMemo(() => {
@@ -60,17 +63,17 @@ export default function Sidebar() {
     <div className="sidebar">
       <div className="flex flex-col items-center gap-2 flex-1 w-full pt-8">
         <NavLink to="/" className={({ isActive }) => `nav-button ${isActive ? 'active' : ''}`} title="Home">
-          <Home size={26} />
+          <SidebarHomeIcon size={26} />
           <span>Home</span>
         </NavLink>
 
         <NavLink to="/upload" className={({ isActive }) => `nav-button ${isActive ? 'active' : ''}`} title="Post">
-          <PlusSquare size={26} />
+          <SidebarPostIcon size={26} />
           <span>Post</span>
         </NavLink>
 
         <NavLink to="/profile" className={({ isActive }) => `nav-button ${isActive ? 'active' : ''}`} title="Profile">
-          <User size={26} />
+          <SidebarProfileIcon size={26} />
           <span>Profile</span>
         </NavLink>
 

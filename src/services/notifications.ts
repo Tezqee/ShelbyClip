@@ -2,8 +2,8 @@
 import { getVideoHash, decodeComment } from './social';
 
 const GATEWAYS = [
-  'https://api.testnet.aptoslabs.com/shelby',
-  'https://api.testnet.shelby.xyz/shelby',
+  'https://api.shelbynet.shelby.xyz/shelby',
+  'https://shelby.shelbynet.shelby.xyz/shelby',
 ];
 
 const LAST_READ_KEY = 'shelby_notif_last_read';
@@ -38,8 +38,8 @@ async function fetchMyVideoHashes(shelbyClient: any, myAddress: string): Promise
   try {
     const result = await shelbyClient.coordination.getBlobs({
       where: { 
-        blob_name: { _ilike: '%shelby-clip/%' },
-        owner_address: { _eq: myAddress } 
+        object_name: { _ilike: '%shelby-clip/%' },
+        owner: { _eq: myAddress } 
       },
       pagination: { limit: 100 },
     });
@@ -51,7 +51,7 @@ async function fetchMyVideoHashes(shelbyClient: any, myAddress: string): Promise
     // Fallback: manual filter if indexer query is brittle
     if (rawList.length === 0) {
       const globalResult = await shelbyClient.coordination.getBlobs({
-        where: { blob_name: { _ilike: '%shelby-clip/%' } },
+        where: { object_name: { _ilike: '%shelby-clip/%' } },
         pagination: { limit: 200 },
       });
       const globalList: any[] = Array.isArray(globalResult)
@@ -66,7 +66,7 @@ async function fetchMyVideoHashes(shelbyClient: any, myAddress: string): Promise
 
     const hashes = new Set<string>();
     rawList.forEach((b: any) => {
-      const name = b.blob_name || b.name || '';
+      const name = b.object_name || b.blob_name || b.name || '';
       // Only consider actual video blobs (those following our naming convention)
       if (name.includes(':::')) {
         hashes.add(getVideoHash(name));
@@ -82,7 +82,7 @@ async function fetchMyVideoHashes(shelbyClient: any, myAddress: string): Promise
 
 function extractOwnerAndName(b: any): { actor: string; blobName: string } {
   let actor = (b.owner || b.address || b.owner_address || '').replace(/^@/, '');
-  let blobName = b.blob_name || b.name || '';
+  let blobName = b.object_name || b.blob_name || b.name || '';
   if (blobName.startsWith('@')) {
     const parts = blobName.substring(1).split('/');
     actor = parts.shift() || actor;
@@ -103,7 +103,7 @@ export async function fetchNotifications(
 
     // Batch fetch social interactions
     const result = await shelbyClient.coordination.getBlobs({
-      where: { blob_name: { _ilike: '%shelby-clip/social/%' } },
+      where: { object_name: { _ilike: '%shelby-clip/social/%' } },
       pagination: { limit: 200 },
     });
 

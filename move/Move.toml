@@ -1,0 +1,10 @@
+[package]
+name = "shelby_clip"
+version = "1.0.0"
+upgrade_policy = "compatible"
+
+[dependencies]
+AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", rev = "aptos-node-v1.10.0", subdir = "aptos-move/framework/aptos-framework" }
+
+[addresses]
+shelby_clip = "0x9ce0fd7ef60010764b6737ed49e1296fb5e34adad586b8ef33276b3ad67f808e"

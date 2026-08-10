@@ -6,8 +6,10 @@ import { useWallet } from '@aptos-labs/wallet-adapter-react';
 import { Order_By, ShelbyBlobClient } from '@shelby-protocol/sdk/browser';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Heart, Share2, Trash2, Volume2, VolumeX, Play, Pause, UserPlus, UserCheck, Loader2, Edit3, X, Check, Camera, Maximize } from 'lucide-react';
-import { checkBlobExists, getFollowBlobName, toggleFollow as socialToggleFollow, getFollowerCount, fetchProfile, normalizeAddr } from '../services/social';
+import { Heart, MessageCircle, Share2, Trash2, Volume2, VolumeX, Play, Pause, Repeat, Star, UserPlus, UserCheck, Loader2, Edit3, X, Check, Camera, Maximize } from 'lucide-react';
+import CommentsModal from './CommentsModal';
+import { checkBlobExists, getFollowBlobName, toggleFollow as socialToggleFollow, getFollowerCount, fetchProfile, getLikeCount, getVideoHash, normalizeAddr } from '../services/social';
+import { useToast } from './ToastContext';
 
 // Compress avatar images down to ~15KB to bypass strict WAF chunking limits
 function compressAvatar(file: File): Promise<Uint8Array> {
@@ -60,7 +62,13 @@ function VideoItem({
   shelbyClient,
   navigate,
   isActive,
-  isNear
+  isNear,
+  forceLoad = false,
+  isProfileGrid = false,
+  onPointerEnter,
+  onPointerLeave,
+  onOpen,
+  isFullscreenViewer = false,
 }: { 
   video: Video, 
   onDelete: (name: string) => Promise<void>, 
@@ -71,17 +79,26 @@ function VideoItem({
   shelbyClient: any,
   navigate: (path: string) => void,
   isActive: boolean,
-  isNear: boolean
+  isNear: boolean,
+  forceLoad?: boolean,
+  isProfileGrid?: boolean,
+  onPointerEnter?: () => void,
+  onPointerLeave?: () => void,
+  onOpen?: () => void,
+  isFullscreenViewer?: boolean,
 }) {
   const [hasError, setHasError] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const [showFeedback, setShowFeedback] = useState<'play' | 'pause' | null>(null);
   const [liked, setLiked] = useState(false);
   const [urlIndex, setUrlIndex] = useState(0); // Multi-gateway fallback
   const videoRef = useRef<HTMLVideoElement>(null);
+  const { showToast } = useToast();
 
   // iOS Detection
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -102,7 +119,7 @@ function VideoItem({
   const [videoSrc, setVideoSrc] = useState('');
 
   useEffect(() => {
-    const rawUrl = isNear ? (video.urls[urlIndex] ?? '') : '';
+    const rawUrl = (isNear || forceLoad || isProfileGrid) ? (video.urls[urlIndex] ?? '') : '';
     if (!rawUrl) { setVideoSrc(''); lastLoadedSrcRef.current = ''; return; }
 
     if (!isIOS) {
@@ -200,15 +217,18 @@ function VideoItem({
 
   const handleDeleteClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm("Hapus video ini dari Blockchain? Tindakan ini tidak bisa dibatalkan.")) {
-      setIsDeleting(true);
-      try {
-        await onDelete(video.rawName);
-      } catch (e) {
-        console.error("Delete error:", e);
-      } finally {
-        setIsDeleting(false);
-      }
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
+    setIsDeleting(true);
+    try {
+      await onDelete(video.rawName);
+    } catch (e) {
+      console.error("Delete error:", e);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -306,7 +326,7 @@ function VideoItem({
           className="btn-premium"
           style={{ padding: '0.5rem 1.5rem', fontSize: '0.8rem' }}
         >
-          Coba Lagi (Retry)
+          Try Again
         </button>
       </div>
 
@@ -314,8 +334,30 @@ function VideoItem({
   }
 
   return (
-    <div className="feed-item" data-index={index}>
-      <div className="video-click-layer" onClick={togglePlayPause}></div>
+    <div
+      className={`feed-item${isFullscreenViewer ? ' profile-fullscreen-item' : ''}`}
+      data-index={index}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+    >
+      {showDeleteConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => e.stopPropagation()}
+          style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(8px)' }}
+        >
+          <div style={{ width: '100%', maxWidth: '340px', padding: '1.35rem', borderRadius: '1rem', background: '#18181b', border: '1px solid rgba(255,255,255,0.14)', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', boxSizing: 'border-box' }}>
+            <h2 style={{ margin: 0, fontSize: '1.15rem', lineHeight: 1.25, fontWeight: 800 }}>Delete video?</h2>
+            <p style={{ margin: '0.6rem 0 1.25rem', color: 'rgba(255,255,255,0.65)', fontSize: '0.9rem', lineHeight: 1.45 }}>This action cannot be undone.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <button type="button" onClick={() => void confirmDelete()} className="btn-premium" style={{ width: '100%', height: '42px', padding: '0 1rem', borderRadius: '0.6rem', fontSize: '0.9rem' }}>Delete</button>
+              <button type="button" onClick={() => setShowDeleteConfirm(false)} style={{ width: '100%', height: '42px', padding: '0 1rem', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.6rem', background: 'transparent', color: 'white', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="video-click-layer" onClick={isProfileGrid && onOpen ? onOpen : togglePlayPause}></div>
       
       {showFeedback && (
         <div className={`video-feedback-icon animate-feedback`}>
@@ -341,9 +383,12 @@ function VideoItem({
       
       <video
         ref={videoRef}
-        className="video-main"
-        loop playsInline={true} preload="auto"
-        muted={isGlobalMuted}
+        className={isProfileGrid ? "video-main profile-card-video" : "video-main"}
+        loop
+        autoPlay={isActive}
+        playsInline={true}
+        preload="auto"
+        muted={true}
         onTimeUpdate={handleTimeUpdate}
         onWaiting={() => { if (!videoRef.current?.paused) setIsBuffering(true); }}
         onPlaying={() => { setIsBuffering(false); setIsPlaying(true); }}
@@ -357,76 +402,131 @@ function VideoItem({
       />
 
       {/* Global Style: Bottom Progress Bar */}
-      <div className="video-progress-container">
-        <div 
-          className="video-progress-bar" 
-          style={{ width: `${progress}%` }}
-        ></div>
-      </div>
-      <div className="video-overlay-main">
-        <div className="bottom-info">
-          {video.description && (
-            <div className="video-caption">
-              {video.description}
-            </div>
-          )}
-          <div className="username-tag">
-            @{video.account.substring(0, 6)}...{video.account.substring(video.account.length - 4)}
+      {!isProfileGrid && (
+        <>
+          <div className="video-progress-container">
+            <div 
+              className="video-progress-bar" 
+              style={{ width: `${progress}%` }}
+            ></div>
           </div>
-        </div>
-
-        <div className="side-actions">
-          <div className="avatar-wrapper" onClick={() => navigate(`/profile/${video.account}`)}>
-            {creatorProfile?.avatarUrl ? (
-              <img src={creatorProfile.avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
-            ) : (
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'white' }}>
-                {creatorProfile?.displayName ? creatorProfile.displayName.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase() : video.account.substring(video.account.length - 2).toUpperCase()}
+          <div className="video-overlay-main">
+            <div className="bottom-info">
+              {video.description && (
+                <div className="video-caption">
+                  {video.description}
+                </div>
+              )}
+              <div className="username-tag">
+                @{video.account.substring(0, 6)}...{video.account.substring(video.account.length - 4)}
               </div>
-            )}
-          </div>
+            </div>
 
-          <div className="action-item" onClick={handleLike}>
-            <div className="action-icon-bg">
-              <Heart 
-                size={34} 
-                fill={liked ? "var(--primary)" : "none"} 
-                color={liked ? "var(--primary)" : "white"} 
-              />
+            <div className="side-actions">
+              <div className="avatar-wrapper" onClick={() => navigate(`/profile/${video.account}`)}>
+                {creatorProfile?.avatarUrl ? (
+                  <img src={creatorProfile.avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                ) : (
+                  <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'white' }}>
+                    {creatorProfile?.displayName ? creatorProfile.displayName.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase() : video.account.substring(video.account.length - 2).toUpperCase()}
+                  </div>
+                )}
+              </div>
+
+              <div className="action-item" onClick={handleLike}>
+                <div className="action-icon-bg">
+                  <Heart 
+                    size={34} 
+                    fill={liked ? "var(--primary)" : "none"} 
+                    color={liked ? "var(--primary)" : "white"} 
+                  />
+                </div>
+              </div>
+
+              <div className="action-item" onClick={(e) => { e.stopPropagation(); setShowComments(true); }}>
+                <div className="action-icon-bg">
+                  <MessageCircle size={34} color="white" />
+                </div>
+                <span className="action-count">Comments</span>
+              </div>
+
+              <div className="action-item" onClick={(e) => {
+                e.stopPropagation();
+                void navigator.clipboard?.writeText(`${window.location.origin}/profile/${video.account}`);
+                showToast('Link copied to clipboard!', 'success');
+              }}>
+                <div className="action-icon-bg">
+                  <Share2 size={34} color="white" />
+                </div>
+                <span className="action-count">Share</span>
+              </div>
+
+              <div className="action-item" onClick={handleFullscreen}>
+                <div className="action-icon-bg">
+                  <Maximize size={34} color="white" />
+                </div>
+                <span className="action-count">Full</span>
+              </div>
+
+              <div className="action-item" onClick={(e) => { e.stopPropagation(); onToggleMute(); }}>
+                <div className="action-icon-bg">
+                  {isGlobalMuted ? <VolumeX size={34} color="white" /> : <Volume2 size={34} color="white" />}
+                </div>
+                <span className="action-count">{isGlobalMuted ? "Mute" : "Loud"}</span>
+              </div>
+
+              {isOwner && (
+                <div className="action-item" onClick={handleDeleteClick}>
+                  <div className="action-icon-bg" style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '50%' }}>
+                    <Trash2 size={24} color="white" />
+                  </div>
+                  <span className="action-count">{isDeleting ? "..." : "Delete"}</span>
+                </div>
+              )}
             </div>
           </div>
-
-          <div className="action-item" onClick={handleFullscreen}>
-            <div className="action-icon-bg">
-              <Maximize size={34} color="white" />
-            </div>
-            <span className="action-count">Full</span>
+        </>
+      )}
+      {isProfileGrid && (
+        <>
+          <div className="video-progress-container profile-grid-progress" aria-hidden="true">
+            <div 
+              className="video-progress-bar" 
+              style={{ width: `${progress}%` }}
+            ></div>
           </div>
-
-          <div className="action-item" onClick={(e) => { e.stopPropagation(); onToggleMute(); }}>
-            <div className="action-icon-bg">
-              {isGlobalMuted ? <VolumeX size={34} color="white" /> : <Volume2 size={34} color="white" />}
-            </div>
-            <span className="action-count">{isGlobalMuted ? "Mute" : "Loud"}</span>
-          </div>
-
-          <div className="action-item">
-            <div className="action-icon-bg">
-              <Share2 size={34} color="white" fill="none" />
-            </div>
-            <span className="action-count">Share</span>
-          </div>
-
           {isOwner && (
-            <div className="action-item" onClick={handleDeleteClick}>
-              <div className="action-icon-bg" style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '50%' }}>
-                <Trash2 size={24} color="white" />
-              </div>
-              <span className="action-count">{isDeleting ? "..." : "Hapus"}</span>
-            </div>
+            <button
+              type="button"
+              aria-label="Delete video"
+              title="Delete video"
+              onClick={handleDeleteClick}
+              disabled={isDeleting}
+              style={{
+                position: 'absolute',
+                top: '0.75rem',
+                right: '0.75rem',
+                zIndex: 20,
+                width: '2.5rem',
+                height: '2.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1px solid rgba(255,255,255,0.25)',
+                borderRadius: '50%',
+                background: 'rgba(0,0,0,0.65)',
+                color: 'white',
+                cursor: isDeleting ? 'wait' : 'pointer',
+              }}
+            >
+              <Trash2 size={20} />
+            </button>
           )}
-        </div>
-      </div>
+        </>
+      )}
+      {showComments && (
+        <CommentsModal videoId={video.id || video.rawName} onClose={() => setShowComments(false)} />
+      )}
     </div>
   );
 }
@@ -434,9 +534,9 @@ function VideoItem({
 
 
 export default function Profile() {
-  const [globalMuted, setGlobalMuted] = useState(true);
   const { address } = useParams();
   const { account, connected, signAndSubmitTransaction } = useWallet();
+  const { showToast } = useToast();
   const queryClient = useQueryClient();
   const shelbyClient = useShelbyClient();
   const uploadBlobs = useUploadBlobs({});
@@ -461,7 +561,6 @@ export default function Profile() {
   });
 
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Edit Profile State
@@ -470,6 +569,9 @@ export default function Profile() {
   const [editBio, setEditBio] = useState('');
   const [editAvatarFile, setEditAvatarFile] = useState<File | null>(null);
   const [editAvatarPreview, setEditAvatarPreview] = useState<string | null>(null);
+  const [activeProfileTab, setActiveProfileTab] = useState<'videos' | 'reposts' | 'favorites' | 'liked'>('videos');
+  const [hoveredVideoIndex, setHoveredVideoIndex] = useState<number | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
 
   // Global Observer initialized later
 
@@ -501,7 +603,7 @@ export default function Profile() {
     if (!account || !signAndSubmitTransaction) return;
     
     if (!editDisplayName.trim()) {
-      alert("Harap masukkan Display Name terlebih dahulu.");
+      alert("Please enter a display name first.");
       return;
     }
     
@@ -519,7 +621,7 @@ export default function Profile() {
           const compressedBytes = await compressAvatar(editAvatarFile);
           avatarBase64Value = `data:image/jpeg;base64,${Buffer.from(compressedBytes).toString('base64')}`;
         } catch (err: any) {
-          alert('Gambar gagal diproses. Gunakan gambar lain.');
+          alert('The image could not be processed. Please use another image.');
           setIsSavingProfile(false);
           return;
         }
@@ -540,7 +642,8 @@ export default function Profile() {
         uploadBlobs.mutate({
           signer: { account, signAndSubmitTransaction },
           blobs: [{ blobName: finalBlobName, blobData: finalBlobData }],
-          expirationMicros
+          expirationMicros,
+          options: { selectedLocation: 'shelbynet-1' }
         }, {
           onSuccess: () => resolve(),
           onError: (e: any) => reject(e)
@@ -564,14 +667,14 @@ export default function Profile() {
 
       queryClient.invalidateQueries({ queryKey: ['profile', targetAddress] });
       
-      alert("Profil berhasil disimpan!");
+      showToast("Profile saved successfully!", 'success');
       setIsEditing(false);
       setEditAvatarFile(null);
       setIsSavingProfile(false);
       
     } catch (e: any) {
       console.error("Sequential Upload Error:", e);
-      alert("Gagal memperbarui profil: " + (e.message || "Unknown error"));
+      showToast("Failed to update profile: " + (e.message || "Unknown error"), 'error');
       setIsSavingProfile(false);
     }
   };
@@ -580,15 +683,29 @@ export default function Profile() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [likesCount, setLikesCount] = useState(0);
+
+  const getLocalFollowingCount = useCallback((addr: string) => {
+    const normalized = normalizeAddr(addr);
+    if (!normalized) return 0;
+    let count = 0;
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(`shelby_follow:${normalized}:`)) count += 1;
+    }
+    return count;
+  }, []);
 
   // ---- Load follow state & follower count ----
   useEffect(() => {
     if (!targetAddress) return;
     getFollowerCount(shelbyClient, targetAddress).then(setFollowerCount);
+    setFollowingCount(getLocalFollowingCount(targetAddress));
     if (connected && account && !isMyProfile) {
       checkBlobExists(account.address.toString(), getFollowBlobName(targetAddress)).then(setIsFollowing);
     }
-  }, [targetAddress, connected, account?.address, shelbyClient, isMyProfile]);
+  }, [targetAddress, connected, account?.address, shelbyClient, isMyProfile, getLocalFollowingCount]);
 
   const handleToggleFollow = async () => {
     if (!connected || !account || !signAndSubmitTransaction) { alert('Connect your wallet!'); return; }
@@ -613,10 +730,7 @@ export default function Profile() {
 
 
   const videoFilters = {
-    is_written: { _eq: 1 as any },
-
-
-    blob_name: { _ilike: "%shelby-clip/%:::%" }
+    object_name: { _ilike: "%shelby-clip/%:::%" }
   };
 
 
@@ -629,145 +743,98 @@ export default function Profile() {
     refetchInterval: 10000, 
   });
 
+  const videos = useMemo<Video[]>(() => {
+    if (error || !accountBlobs) return [];
 
-  const videos = useMemo(() => {
-    if (error) return [];
-    if (!accountBlobs) return [];
-    
-    // Debug: See what exactly we are getting from Shelby
-
-
-    // Handle different possible response structures from SDK
-    const blobList = Array.isArray(accountBlobs) 
-      ? accountBlobs 
+    const blobList = Array.isArray(accountBlobs)
+      ? accountBlobs
       : (accountBlobs as any).blobs || (accountBlobs as any).hits || [];
 
-    // Blacklist for unwanted/secret videos (Stricter filter reduces need for this)
-    const hiddenBlobNames: string[] = [];
+    const gateways = [
+      import.meta.env.VITE_GATEWAY_URL_1,
+      import.meta.env.VITE_GATEWAY_URL_2,
+      "https://media-kit.shelby.xyz",
+      "https://api.shelbynet.shelby.xyz/shelby",
+      "https://shelby.shelbynet.shelby.xyz/shelby"
+    ].filter(Boolean);
 
-    // Known non-video blobs to always exclude (Clutter cleanup)
-    const NON_VIDEO_PATTERNS = [
-      'profile.json',
-      'profile-avatar',
-      'profile-metadata',
-      'shelby-clip/profile',
-      'shelby-clip/metadata',
-      'shelby-clip/avatar',
-      'shelby-clip/social',
-      'avatar-',
-      'social/',
-      'guest',
-      'gues',
-      'test',
-      'temp',
-      'null',
-      'undefined'
-    ];
+    return blobList.map((blob: any) => {
+      const rawName = blob.object_name || blob.blob_name || blob.blobNameSuffix || blob.name || "";
+      const lowerName = rawName.toLowerCase();
+      if (!rawName.includes("shelby-clip/") || !rawName.includes(":::") ||
+          lowerName.includes("/profile") || lowerName.includes("/avatar") ||
+          lowerName.includes("/social") || lowerName.includes("/metadata")) {
+        return null;
+      }
 
-    return blobList
-      .map((b: any) => {
-        const fullBlobName = b.blob_name || b.blobNameSuffix || b.name || "";
-        let owner = b.owner || b.address || b.owner_address || targetAddress || "0x0";
-        let cleanName = fullBlobName;
+      const owner = (blob.owner || blob.address || blob.owner_address || targetAddress || "0x0").toString().replace(/^@/, "");
+      const cleanName = rawName.startsWith("@") ? rawName.substring(1).split("/").slice(1).join("/") : rawName;
+      const pathSegmentsSemi = cleanName.split("/")
+        .map((segment: string) => encodeURIComponent(segment).replace(/\(/g, "%28").replace(/\)/g, "%29"))
+        .join("/");
+      const pathSegmentsFull = encodeURIComponent(cleanName).replace(/\(/g, "%28").replace(/\)/g, "%29");
+      const variants = [owner];
+      if (owner.startsWith("0x")) {
+        const cleanOwner = owner.replace(/^0x/, "");
+        variants.push(cleanOwner.length === 64
+          ? "0x" + cleanOwner.replace(/^0+/, "")
+          : "0x" + cleanOwner.padStart(64, "0"));
+      }
+      const urls = gateways.flatMap((base) => variants.flatMap((variant) => isIOS ? [
+        `${base}/v1/blobs/${variant}/${cleanName}.mp4`,
+        `${base}/v1/blobs/${variant}/${cleanName}`,
+        `${base}/v1/blobs/${variant}/${pathSegmentsSemi}`,
+        `${base}/v1/blobs/${variant}/${pathSegmentsFull}`
+      ] : [
+        `${base}/v1/blobs/${variant}/${cleanName}`,
+        `${base}/v1/blobs/${variant}/${pathSegmentsSemi}`,
+        `${base}/v1/blobs/${variant}/${pathSegmentsFull}`,
+        `${base}/v1/blobs/${variant}/${cleanName}.mp4`
+      ]));
 
-        // Skip non-video blobs (profile metadata, avatar, social markers, etc.)
-        const lowerName = fullBlobName.toLowerCase();
-        const IS_INTERNAL = NON_VIDEO_PATTERNS.some(p => lowerName.includes(p.toLowerCase()));
-        if (IS_INTERNAL) return null;
-        
-        // Strict naming check: Real videos follow the {timestamp}_{id} format (now with .mp4) before ':::'
-        const hasAppPattern = fullBlobName.includes('shelby-clip/') && fullBlobName.includes(':::');
-        
-        // Final gate: Must have our app prefix and the metadata separator
-        if (!hasAppPattern) return null;
-
-        // Profile-save blobs are named shelby-clip/{timestamp}p_{id}.mp4 or shelby-clip/profile.mp4 — reject from grid
-        const bSeg = fullBlobName.split(':::')[0];
-        const isTechnicalStyle = /\/\d+p_/.test(bSeg) || bSeg.includes('/profile') || bSeg.includes('/avatar') || bSeg.includes('/social') || bSeg.includes('/metadata');
-        if (isTechnicalStyle) return null;
-
-
-        // Ensure owner is a string and remove any @ prefix
-        owner = owner.toString().replace(/^@/, '');
-
-        // If the blob name starts with @, extract the owner address
-        if (fullBlobName.startsWith('@')) {
-          const parts = fullBlobName.substring(1).split('/');
-          const extractedOwner = parts[0];
-          if (extractedOwner && (owner === "0x0" || !owner)) {
-            owner = extractedOwner;
-          }
-          parts.shift();
-          cleanName = parts.join('/');
+      const rawDescription = rawName.split(":::")[1] || "";
+      let description = rawDescription === "m" ? "" : rawDescription;
+      if (rawDescription.startsWith("b64:")) {
+        try {
+          description = Buffer.from(rawDescription.substring(4), "base64").toString("utf-8");
+        } catch {
+          description = rawDescription;
         }
-        
-        // Skip if this video is in the blacklist
-        if (hiddenBlobNames.some(name => fullBlobName.includes(name))) {
-          return null;
+      }
+
+      return {
+        id: blob.id || blob.name || blob.blob_name || rawName,
+        rawName,
+        urls,
+        account: owner,
+        description
+      };
+    }).filter((video: Video | null): video is Video => video !== null);
+  }, [accountBlobs, error, isIOS, targetAddress]);
+
+  useEffect(() => {
+    if (!shelbyClient || videos.length === 0) {
+      setLikesCount(0);
+      return;
+    }
+
+    let cancelled = false;
+    const loadLikes = async () => {
+      try {
+        const counts = await Promise.all(
+          videos.slice(0, 20).map((video: Video) => getLikeCount(shelbyClient, getVideoHash(video.rawName)))
+        );
+        if (!cancelled) {
+          setLikesCount(counts.reduce((sum, value) => sum + value, 0));
         }
+      } catch {
+        if (!cancelled) setLikesCount(0);
+      }
+    };
 
-        const pathSegmentsSemi = cleanName.split('/')
-          .map((seg: string) => encodeURIComponent(seg).replace(/\(/g, '%28').replace(/\)/g, '%29'))
-          .join('/');
-        const pathSegmentsFull = encodeURIComponent(cleanName).replace(/\(/g, '%28').replace(/\)/g, '%29');
-        
-        // Define multiple stable gateways (Removed dead ones)
-        const gateways = [
-          import.meta.env.VITE_GATEWAY_URL_1,
-          import.meta.env.VITE_GATEWAY_URL_2,
-          "https://api.testnet.aptoslabs.com/shelby",
-          "https://api.testnet.shelby.xyz/shelby"
-        ].filter(Boolean);
-        
-        // iOS: put .mp4 URL first so Safari can detect MIME type without Range-Request check
-        const urls = gateways.flatMap(base => isIOS ? [
-          `${base}/v1/blobs/${owner}/${cleanName}.mp4`,          // 1. .mp4 hint (iOS first)
-          `${base}/v1/blobs/${owner}/${cleanName}`,              // 2. Raw
-          `${base}/v1/blobs/${owner}/${pathSegmentsSemi}`,       // 3. Partial encoded
-          `${base}/v1/blobs/${owner}/${pathSegmentsFull}`,       // 4. Full encoded
-        ] : [
-          `${base}/v1/blobs/${owner}/${cleanName}`,              // 1. Raw
-          `${base}/v1/blobs/${owner}/${pathSegmentsSemi}`,       // 2. Partial encoded
-          `${base}/v1/blobs/${owner}/${pathSegmentsFull}`,       // 3. Full encoded
-          `${base}/v1/blobs/${owner}/${cleanName}.mp4`           // 4. MIME Hack fallback
-        ]);
-
-
-        // Parse description from blob name (format: path:::encodedDescription)
-        const descParts = fullBlobName.split(':::');
-        let finalDescription = '';
-        if (descParts.length > 1) {
-          const rawDesc = descParts[1];
-          if (rawDesc.startsWith('b64:')) {
-            try {
-              // Decode only if it starts with the b64: prefix
-              const decoded = Buffer.from(rawDesc.substring(4), 'base64').toString('utf-8');
-              // If decoded is profile-format JSON ({d, t}), it is NOT a caption — blank it
-              try {
-                const parsed = JSON.parse(decoded);
-                finalDescription = (parsed && typeof parsed === 'object' && 'd' in parsed) ? '' : decoded;
-              } catch {
-                finalDescription = decoded;
-              }
-            } catch (e) {
-              finalDescription = rawDesc;
-            }
-          } else {
-            // Treat as plain text (fixes older videos showing garbled text)
-            finalDescription = rawDesc;
-          }
-        }
-
-        return {
-          id: b.id || b.name || b.blob_name || Math.random().toString(),
-          urls,
-          rawName: fullBlobName, 
-          account: owner.toString(),
-          description: finalDescription
-        };
-      })
-      .filter((v: any) => v !== null);
-  }, [accountBlobs, error]);
+    void loadLikes();
+    return () => { cancelled = true; };
+  }, [shelbyClient, videos]);
 
   const handleDelete = async (blobName: string) => {
     if (!account || !signAndSubmitTransaction) return;
@@ -775,7 +842,7 @@ export default function Profile() {
     try {
 
       // Construct the payload for delete_blob Move function
-      const payload = ShelbyBlobClient.createDeleteBlobPayload({
+      const payload = ShelbyBlobClient.createDeleteObjectPayload({
         blobName: blobName
       });
 
@@ -785,7 +852,7 @@ export default function Profile() {
       });
       
 
-      alert("Video berhasil dihapus!");
+      showToast("Video deleted successfully!", 'success');
       
       // Immediate invalidation
       queryClient.invalidateQueries({ queryKey: ['globalBlobs'] });
@@ -794,29 +861,9 @@ export default function Profile() {
       
     } catch (e: any) {
       console.error("Failed to delete blob:", e);
-      alert("Gagal menghapus: " + (e.message || "User rejected or network error"));
+      alert("Failed to delete: " + (e.message || "User rejected or network error"));
     }
   };
-
-  // Global Observer to track the active video index
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const index = parseInt(entry.target.getAttribute('data-index') || '0');
-            setActiveIndex(index);
-          }
-        });
-      },
-      { threshold: 0.5 } // Balanced threshold for mobile browser chrome variability
-    );
-
-    const elements = containerRef.current?.querySelectorAll('.feed-item');
-    elements?.forEach((el) => observer.observe(el));
-
-    return () => observer.disconnect();
-  }, [videos.length]);
 
   if (!targetAddress && !connected) {
     return (
@@ -849,9 +896,9 @@ export default function Profile() {
   }
 
   return (
-    <div className="feed-container" ref={containerRef}>
+    <div className="feed-container profile-page" ref={containerRef}>
       <div 
-        className="p-8 border-b border-sidebar-border mb-4 flex flex-col items-center gap-6"
+        className="p-4 border-b border-sidebar-border mb-2 flex flex-col items-center gap-3"
         style={{ scrollSnapAlign: 'center' }}
       >
         <div className="flex flex-col w-full">
@@ -948,7 +995,7 @@ export default function Profile() {
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-6 w-full relative">
+            <div className="flex items-start gap-6 w-full relative">
               <div className="avatar-section">
                 <div
                   className="profile-avatar-circle"
@@ -969,74 +1016,148 @@ export default function Profile() {
                   )}
                 </div>
               </div>
-              <div className="flex flex-col gap-1 flex-1">
-                <h1 style={{ fontSize: '1.4rem', fontWeight: 700 }}>
-                  {profileData?.displayName || `@${targetAddress?.substring(0, 6)}...${targetAddress?.substring(targetAddress.length - 4)}`}
-                </h1>
-                <p style={{ fontSize: '0.85rem', opacity: 0.6, marginTop: '0.15rem' }}>
+              <div className="flex flex-col gap-2 flex-1 profile-header-main">
+                <div>
+                  <h1 style={{ fontSize: '1.4rem', fontWeight: 700 }}>
+                    {profileData?.displayName || `@${targetAddress?.substring(0, 6)}...${targetAddress?.substring(targetAddress.length - 4)}`}
+                  </h1>
+                </div>
+
+                <div className="profile-header-stats profile-stats-container">
+                  <div className="profile-header-stat">
+                    <span className="font-bold">{videos.length}</span>
+                    <span className="opacity-60 text-sm">Videos</span>
+                  </div>
+                  <div className="profile-header-stat">
+                    <span className="font-bold">{followerCount}</span>
+                    <span className="opacity-60 text-sm">Followers</span>
+                  </div>
+                  <div className="profile-header-stat">
+                    <span className="font-bold">{followingCount}</span>
+                    <span className="opacity-60 text-sm">Following</span>
+                  </div>
+                  <div className="profile-header-stat">
+                    <span className="font-bold">{likesCount}</span>
+                    <span className="opacity-60 text-sm">Likes</span>
+                  </div>
+                </div>
+
+                <div className="profile-header-actions">
+                  {!isMyProfile && connected && (
+                    <button
+                      className={isFollowing ? 'btn-follow-active' : 'btn-premium'}
+                      style={{ width: 'fit-content', padding: '0.45rem 1.5rem', fontSize: '0.85rem', gap: '0.5rem', display: 'inline-flex', alignItems: 'center' }}
+                      onClick={handleToggleFollow}
+                      disabled={followLoading}
+                    >
+                      {followLoading
+                        ? <Loader2 size={14} className="animate-spin" />
+                        : isFollowing ? <UserCheck size={14} /> : <UserPlus size={14} />
+                      }
+                      {isFollowing ? 'Following' : 'Follow'}
+                    </button>
+                  )}
+                  {isMyProfile && (
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.45rem 1rem', borderRadius: '0.5rem',
+                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                        color: 'white', cursor: 'pointer', transition: 'background 0.2s', width: 'fit-content'
+                      }}
+                      onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                      onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                    >
+                      <Edit3 size={14} />
+                      <span>Edit Profile</span>
+                    </button>
+                  )}
+                </div>
+
+                <p className="profile-header-bio">
                   {profileData?.bio || (isMyProfile ? 'My Profile' : 'Content Creator')}
                 </p>
-                {/* Follow/Unfollow for other users */}
-                {!isMyProfile && connected && (
-                  <button
-                    className={isFollowing ? 'btn-follow-active' : 'btn-premium'}
-                    style={{ marginTop: '0.75rem', width: 'fit-content', padding: '0.45rem 1.5rem', fontSize: '0.85rem', gap: '0.5rem', display: 'flex', alignItems: 'center' }}
-                    onClick={handleToggleFollow}
-                    disabled={followLoading}
-                  >
-                    {followLoading
-                      ? <Loader2 size={14} className="animate-spin" />
-                      : isFollowing ? <UserCheck size={14} /> : <UserPlus size={14} />
-                    }
-                    {isFollowing ? 'Following' : 'Follow'}
-                  </button>
-                )}
-                {/* Edit Profile for my profile */}
-                {isMyProfile && (
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem',
-                      fontSize: '0.85rem', padding: '0.45rem 1rem', borderRadius: '0.5rem',
-                      background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                      color: 'white', cursor: 'pointer', transition: 'background 0.2s', width: 'fit-content'
-                    }}
-                    onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                    onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                  >
-                    <Edit3 size={14} />
-                    <span>Edit Profile</span>
-                  </button>
-                )}
+
+                <div className="profile-tabs-container mt-4">
+                  <div className="profile-tab-list">
+                    {[
+                      { key: 'videos', icon: <Play size={16} />, label: 'Videos' },
+                      { key: 'reposts', icon: <Repeat size={16} />, label: 'Reposts' },
+                      { key: 'favorites', icon: <Star size={16} />, label: 'Favorites' },
+                      { key: 'liked', icon: <Heart size={16} />, label: 'Liked' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        className={`profile-tab ${activeProfileTab === tab.key ? 'active' : ''}`}
+                        onClick={() => setActiveProfileTab(tab.key as any)}
+                        type="button"
+                        aria-label={tab.label}
+                      >
+                        <span className="profile-tab-icon">{tab.icon}</span>
+                        <span className="profile-tab-label">{tab.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           )}
         </div>
 
-        <div className="flex gap-8 w-full justify-start px-2">
-          <div className="flex items-center gap-1"><span className="font-bold">{videos.length}</span> <span className="opacity-60 text-sm">Videos</span></div>
-          <div className="flex items-center gap-1"><span className="font-bold">{followerCount}</span> <span className="opacity-60 text-sm">Followers</span></div>
-        </div>
-
-        <p style={{ fontSize: '0.75rem', opacity: 0.3, alignSelf: 'flex-start', wordBreak: 'break-all', maxWidth: '100%' }} className="mt-2 px-1">
-          {targetAddress}
-        </p>
+        {!profileData?.displayName && targetAddress && (
+          <p style={{ fontSize: '0.75rem', opacity: 0.3, alignSelf: 'flex-start', wordBreak: 'break-all', maxWidth: '100%' }} className="mt-2 px-1">
+            {targetAddress}
+          </p>
+        )}
       </div>
-      {videos.map((video: any, idx: number) => (
-        <VideoItem 
-           key={video.id} 
-           video={video} 
-           index={idx}
-           isActive={idx === activeIndex}
-           isNear={idx === activeIndex || (idx === activeIndex + 1)}
-           onDelete={handleDelete} 
-           isOwner={isMyProfile} 
-           isGlobalMuted={globalMuted} 
-           onToggleMute={() => setGlobalMuted(!globalMuted)}
-           shelbyClient={shelbyClient}
-           navigate={navigate}
-        />
-      ))}
+      <h2 className="profile-videos-heading">Videos</h2>
+      <div className="profile-video-grid">
+        {videos.map((video: any, idx: number) => (
+          <VideoItem 
+             key={video.id} 
+             video={video} 
+             index={idx}
+             isActive={hoveredVideoIndex === idx}
+             isNear={true}
+             forceLoad={true}
+             isProfileGrid={true}
+             onDelete={handleDelete} 
+             isOwner={isMyProfile} 
+             isGlobalMuted={true} 
+             onToggleMute={() => { }}
+             onOpen={() => setSelectedVideo(video)}
+             onPointerEnter={() => setHoveredVideoIndex(idx)}
+             onPointerLeave={() => setHoveredVideoIndex(null)}
+             shelbyClient={shelbyClient}
+             navigate={navigate}
+          />
+        ))}
+      </div>
+      {selectedVideo && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#000' }}>
+          <button
+            type="button"
+            aria-label="Close video"
+            onClick={() => setSelectedVideo(null)}
+            style={{ position: 'absolute', top: '1rem', left: '1rem', zIndex: 1010, width: '2.5rem', height: '2.5rem', border: 'none', borderRadius: '50%', background: 'rgba(255,255,255,0.14)', color: 'white', fontSize: '1.5rem', cursor: 'pointer' }}
+          >
+            <X size={22} />
+          </button>
+          <VideoItem
+            video={selectedVideo}
+            onDelete={handleDelete}
+            isOwner={isMyProfile}
+            isGlobalMuted={false}
+            onToggleMute={() => {}}
+            index={0}
+            shelbyClient={shelbyClient}
+            navigate={navigate}
+            isActive={true}
+            isNear={true}
+            isFullscreenViewer={true}
+          />
+        </div>
+      )}
     </div>
   );
 }

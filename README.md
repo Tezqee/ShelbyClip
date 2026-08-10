@@ -3,7 +3,7 @@
 A high-performance, decentralized vertical video platform built on the **Shelby Network**. Experience an immersive vertical video social feed powered by blockchain security and decentralized storage.
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
-![Network](https://img.shields.io/badge/Network-Shelby_Testnet-orange.svg)
+![Network](https://img.shields.io/badge/Network-ShelbyNet-orange.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ## 🌟 Features
@@ -30,7 +30,7 @@ A high-performance, decentralized vertical video platform built on the **Shelby 
 
 - Node.js (v18+)
 - npm or yarn
-- An Aptos-compatible wallet (Testnet configured)
+- An Aptos-compatible wallet (ShelbyNet configured)
 
 ### Installation
 

@@ -1,29 +1,23 @@
 import { Buffer } from 'buffer';
 (window as any).Buffer = Buffer;
 
-// PROFESSIONAL MODE: Suppress all native browser logs to keep the console completely pristine
-if (typeof window !== 'undefined') {
-  console.log = () => {};
-  console.warn = () => {};
-  console.error = () => {};
-  console.info = () => {};
-  console.debug = () => {};
-}
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AptosWalletAdapterProvider } from '@aptos-labs/wallet-adapter-react';
-import AptosCoreProvider from './AptosCoreProvider';
+import { Network } from '@aptos-labs/ts-sdk';
 import { ShelbyClientProvider } from '@shelby-protocol/react';
 import { ShelbyClient } from '@shelby-protocol/sdk/browser';
+import AptosCoreProvider from './AptosCoreProvider';
+import { ToastProvider } from './components/ToastContext';
 
 const queryClient = new QueryClient();
 const shelbyClient = new ShelbyClient({ 
-  network: 'testnet' as any,
-  apiKey: import.meta.env.VITE_SHELBY_API_KEY
+  network: Network.SHELBYNET,
+  apiKey: import.meta.env.VITE_SHELBY_API_KEY,
+  locationHint: 'shelbynet',
 });
 
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
@@ -64,9 +58,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <ShelbyClientProvider client={shelbyClient}>
         <QueryClientProvider client={queryClient}>
-          <AptosWalletAdapterProvider autoConnect={true}>
+          <AptosWalletAdapterProvider optInWallets={['Petra']} autoConnect={true}>
             <AptosCoreProvider>
-              <App />
+              <ToastProvider>
+                <App />
+              </ToastProvider>
             </AptosCoreProvider>
           </AptosWalletAdapterProvider>
         </QueryClientProvider>

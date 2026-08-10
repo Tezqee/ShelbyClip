@@ -7,6 +7,7 @@ import Upload from './components/Upload';
 import Profile from './components/Profile';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
 import { LogOut } from 'lucide-react';
+import { shortenAddress } from './services/aptosClient';
 
 function App() {
   const { connected, connect, disconnect, wallets, account } = useWallet();
@@ -83,7 +84,7 @@ function App() {
                    cursor: 'pointer'
                 }}>
                 <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>
-                  {account?.address?.toString().substring(0,6)}...{account?.address?.toString().substring(account.address.toString().length - 4)}
+                  {shortenAddress(account?.address?.toString() || '')}
                 </span>
                 <LogOut size={14} style={{ opacity: 0.6 }} />
               </button>

@@ -40,3 +40,7 @@ build/
 .gemini/
 scratch/
 .vite/
+
+# Aptos Smart Contract configuration
+.aptos/
+move/.aptos/
