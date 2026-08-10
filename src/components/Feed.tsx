@@ -793,9 +793,18 @@ export default function Feed() {
   }
 
   if (error) {
+    const errorMessage = String((error as Error)?.message || error || '').toLowerCase();
+    const isUnauthorized = errorMessage.includes('401') || errorMessage.includes('unauthorized') || errorMessage.includes('api key');
     return (
       <div className="feed-container flex flex-col items-center justify-center gap-4 p-8 text-center">
-        <h2 style={{ color: 'var(--muted-foreground)' }}>Feed is temporarily unavailable.</h2>
+        <h2 style={{ color: 'var(--muted-foreground)' }}>
+          {isUnauthorized ? 'Shelby API key is missing or invalid.' : 'Feed is temporarily unavailable.'}
+        </h2>
+        {isUnauthorized && (
+          <p style={{ maxWidth: '32rem', color: 'var(--muted-foreground)', fontSize: '0.85rem' }}>
+            Add VITE_SHELBY_API_KEY to the deployment environment, then redeploy the application.
+          </p>
+        )}
         <button className="primary-button" onClick={() => void refetch()}>
           Try again
         </button>
